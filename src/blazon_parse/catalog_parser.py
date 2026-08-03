@@ -7,6 +7,22 @@ _CROSS_REFERENCE_RE = re.compile(
     r"^(?P<term>.+?) - see(?P<also> also)? (?P<targets>.+)$"
 )
 
+# Da'ud notation: my.cat's ASCII-safe encoding for accented characters.
+# Full reference: https://heraldry.sca.org/daud_notation.pdf
+_DAUD_CHARACTERS: dict[str, str] = json.loads(
+    (Path(__file__).parent / "daud_notation.json").read_text(encoding="utf-8")
+)
+_DAUD_RE = re.compile(r"\{([^{}]*)\}")
+
+
+def decode_daud(text: str) -> str:
+    """Replace {code} sequences with their Unicode character; leave unknown codes as-is."""
+
+    def replace(match: re.Match[str]) -> str:
+        return _DAUD_CHARACTERS.get(match[1], match[0])
+
+    return _DAUD_RE.sub(replace, text)
+
 
 @dataclass
 class FeatureRelation:
@@ -65,7 +81,7 @@ def parse_catalog(text: str) -> ParsedCatalog:
     cross_references: list[CrossReference] = []
 
     for lineno, raw_line in enumerate(text.splitlines(), start=1):
-        line = raw_line.strip()
+        line = decode_daud(raw_line.strip())
         if not line:
             continue
 
