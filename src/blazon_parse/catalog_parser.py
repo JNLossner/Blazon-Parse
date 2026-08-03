@@ -64,10 +64,57 @@ class CrossReference:
 
 
 @dataclass
+class Category:
+    category: str
+    code: str
+    terms: list[str]
+    cat_type: str = ""
+    subtype: str = ""
+
+    @classmethod
+    def from_line(cls, line: str) -> Category | None:
+        if line.startswith("|") or "|" not in line:
+            return None
+        category, code = line.split("|", 1)
+        term = category
+
+        cat_parts = [s.strip() for s in category.split(",")]
+        cat_type = cat_parts[0]
+        subtype = ""
+
+        words = cat_type.split(" ")
+        if any(word.startswith("field") for word in words):
+            cat_type = "field"
+            term = " ".join([word for word in words if word != "field"])
+
+        if len(cat_parts) > 1:
+            term = " ".join(cat_parts[1:])
+
+        if len(cat_parts) > 2 and cat_type not in [
+            "monster",
+            "charge treatment",
+            "field treatment",
+        ]:
+            subtype = cat_parts[1]
+            term = " ".join(cat_parts[2:])
+
+        return cls(
+            category=category,
+            code=code,
+            terms=[]
+            if not term or term.startswith("not") or term == "other"
+            else [term],
+            cat_type=cat_type,
+            subtype=subtype,
+        )
+
+
+@dataclass
 class ParsedCatalog:
     features: list[FeatureRelation]
     feature_index: dict[str, list[int]]
-    categories: dict[str, str]
+    categories: dict[str, Category]
+    category_lookup: dict[str, list[str]]
     cross_references: list[CrossReference]
 
     def relations_for(self, term: str) -> list[FeatureRelation]:
@@ -77,7 +124,7 @@ class ParsedCatalog:
 
 def parse_catalog(text: str) -> ParsedCatalog:
     features: list[FeatureRelation] = []
-    categories: dict[str, str] = {}
+    categories: dict[str, Category] = {}
     cross_references: list[CrossReference] = []
 
     for lineno, raw_line in enumerate(text.splitlines(), start=1):
@@ -89,9 +136,8 @@ def parse_catalog(text: str) -> ParsedCatalog:
             features.append(feature)
         elif cross_reference := CrossReference.from_line(line):
             cross_references.append(cross_reference)
-        elif "|" in line:
-            term, code = line.split("|", 1)
-            categories[term] = code
+        elif category := Category.from_line(line):
+            categories[category.category] = category
         else:
             raise ValueError(f"my.cat:{lineno}: unrecognized line format: {raw_line!r}")
 
@@ -101,10 +147,21 @@ def parse_catalog(text: str) -> ParsedCatalog:
             for term in tier:
                 feature_index.setdefault(term, []).append(i)
 
+    for reference in cross_references:
+        for cat in reference.targets:
+            if cat in categories:
+                categories[cat].terms.append(reference.term)
+
+    category_lookup: dict[str, list[str]] = {}
+    for key, category in categories.items():
+        for term in category.terms:
+            category_lookup.setdefault(term, []).append(key)
+
     return ParsedCatalog(
         features=features,
         feature_index=feature_index,
         categories=categories,
+        category_lookup=category_lookup,
         cross_references=cross_references,
     )
 
@@ -125,6 +182,7 @@ def load_parsed_catalog(src: Path) -> ParsedCatalog:
     return ParsedCatalog(
         features=[FeatureRelation(**f) for f in data["features"]],
         feature_index=data["feature_index"],
-        categories=data["categories"],
+        categories={k: Category(**v) for k, v in data["categories"].items()},
+        category_lookup=data["category_lookup"],
         cross_references=[CrossReference(**c) for c in data["cross_references"]],
     )
