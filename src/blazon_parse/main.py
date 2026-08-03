@@ -7,6 +7,7 @@ from blazon_parse.catalog_parser import (
     parse_catalog_file,
     save_parsed_catalog,
 )
+from blazon_parse.matcher import find_catalog_matches
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CATALOG_PATH = PROJECT_ROOT / "data" / "my.cat"
@@ -29,6 +30,13 @@ def main() -> None:
     )
 
     print(args.blazon)
+    matches = find_catalog_matches(args.blazon, catalog)
+
+    unmatched = list(args.blazon.lower())
+    for (start, end), found in sorted(matches.items()):
+        unmatched[start:end] = " " * (end - start)
+        print(start, args.blazon[start:end], found)
+    print("unmatched:", "".join(unmatched))
 
 
 if __name__ == "__main__":
