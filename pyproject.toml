@@ -1,0 +1,22 @@
+[project]
+name = "blazon-parse"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "Jannika Lossner" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+blazon-parse = "blazon_parse.main:main"
+
+[build-system]
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.6.1",
+    "ruff>=0.16.1",
+]
