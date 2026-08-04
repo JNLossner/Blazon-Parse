@@ -3,7 +3,11 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import inflect
+
 from blazon_parse.heraldic import HeraldicFeature, to_feature_type
+
+_inflect = inflect.engine()
 
 _CROSS_REFERENCE_RE = re.compile(
     r"^(?P<term>.+?) - see(?P<also> also)? (?P<targets>.+)$"
@@ -107,6 +111,23 @@ class Category:
         )
 
 
+def _pluralize(term: str) -> str:
+    plural = _inflect.plural_noun(term)
+    return plural if plural else term
+
+
+def _add_plural_keys(lookup: dict[str, list]) -> None:
+    """Add each term's plural as an additional key mapping to the same values.
+
+    Blazons commonly use the plural (e.g. "three roses"), so lookups need to
+    recognize both forms.
+    """
+    for term in list(lookup):
+        plural = _pluralize(term)
+        if plural != term:
+            lookup.setdefault(plural, []).extend(lookup[term])
+
+
 @dataclass
 class ParsedCatalog:
     features: list[FeatureRelation]
@@ -144,6 +165,7 @@ def parse_catalog(text: str) -> ParsedCatalog:
         for tier in feature.tiers:
             for term in tier:
                 feature_index.setdefault(term, []).append(i)
+    _add_plural_keys(feature_index)
 
     for reference in cross_references:
         for cat in reference.targets:
@@ -154,6 +176,7 @@ def parse_catalog(text: str) -> ParsedCatalog:
     for key, category in categories.items():
         for term in category.terms:
             category_lookup.setdefault(term, []).append(key)
+    _add_plural_keys(category_lookup)
 
     return ParsedCatalog(
         features=features,
