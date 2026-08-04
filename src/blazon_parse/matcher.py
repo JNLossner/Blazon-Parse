@@ -1,6 +1,7 @@
 import re
 
 from blazon_parse.catalog_parser import ParsedCatalog
+from blazon_parse.heraldic import FeatureType, HeraldicFeature, to_feature_type
 
 NUMBER_WORDS = [
     "one",
@@ -37,27 +38,41 @@ def find_matches(blazon: str, terms: list[str]) -> dict[tuple[int, int], list[st
 
 def find_catalog_matches(
     blazon: str, catalog: ParsedCatalog
-) -> dict[tuple[int, int], list[str]]:
+) -> dict[tuple[int, int], list[tuple[str, HeraldicFeature]]]:
     blazon = blazon.lower()
-    findings: dict[tuple[int, int], list[str]] = {}
+    findings: dict[tuple[int, int], list[tuple[str, HeraldicFeature]]] = {}
 
     numbers = {n + 1: [f"{n + 1}", number] for n, number in enumerate(NUMBER_WORDS)}
     numbers[1].extend(["a ", "an "])
 
     for k, vs in numbers.items():
         for span, v in find_matches(blazon, vs).items():
-            findings.setdefault(span, []).extend(f"count: {k} ({val})" for val in v)
+            findings.setdefault(span, []).extend(
+                (
+                    val,
+                    HeraldicFeature(feature_type=FeatureType.count, subtype=k, code=k),
+                )
+                for val in v
+            )
 
     for term, idxs in catalog.feature_index.items():
-        term = term.removeprefix("~")
-        features = {
-            f"feature {catalog.features[idx].feature_set} ({term})" for idx in idxs
-        }
-        for span in find_all(blazon, term.lower()):
+        features = [
+            (
+                term,
+                HeraldicFeature(
+                    feature_type=to_feature_type(ftype),
+                    subtype=ftype,
+                    code="?",
+                    details=term,
+                ),
+            )
+            for ftype in {catalog.features[idx].feature_set for idx in idxs}
+        ]
+        for span in find_all(blazon, term.removeprefix("~").lower()):
             findings.setdefault(span, []).extend(features)
 
     for term, cats in catalog.category_lookup.items():
-        categories = [f"category ({term}): {cat}" for cat in cats]
+        categories = [(term, catalog.categories[cat].heraldic) for cat in cats]
         for span in find_all(blazon, term.lower()):
             findings.setdefault(span, []).extend(categories)
 

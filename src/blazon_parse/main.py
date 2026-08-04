@@ -35,7 +35,14 @@ def main() -> None:
     unmatched = list(args.blazon.lower())
     for (start, end), found in sorted(matches.items()):
         unmatched[start:end] = " " * (end - start)
-        print(start, args.blazon[start:end], found)
+        print(
+            start,
+            args.blazon[start:end],
+            [
+                f'("{term}" = {heraldic.feature_type}, {heraldic.subtype}, {heraldic.code})'
+                for term, heraldic in found
+            ],
+        )
     print("unmatched:", "".join(unmatched))
 
 

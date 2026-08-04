@@ -3,6 +3,8 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from blazon_parse.heraldic import HeraldicFeature, to_feature_type
+
 _CROSS_REFERENCE_RE = re.compile(
     r"^(?P<term>.+?) - see(?P<also> also)? (?P<targets>.+)$"
 )
@@ -65,11 +67,9 @@ class CrossReference:
 
 @dataclass
 class Category:
+    heraldic: HeraldicFeature
     category: str
-    code: str
     terms: list[str]
-    cat_type: str = ""
-    subtype: str = ""
 
     @classmethod
     def from_line(cls, line: str) -> Category | None:
@@ -78,14 +78,12 @@ class Category:
         category, code = line.split("|", 1)
         term = category
 
-        cat_parts = [s.strip() for s in category.split(",")]
+        cat_parts = [s.strip() for s in category.split(",") if "as charge" not in s]
         cat_type = cat_parts[0]
         subtype = ""
 
         words = cat_type.split(" ")
-        if any(word.startswith("field") for word in words):
-            cat_type = "field"
-            term = " ".join([word for word in words if word != "field"])
+        term = " ".join([word for word in words if word != "field"])
 
         if len(cat_parts) > 1:
             term = " ".join(cat_parts[1:])
@@ -99,13 +97,13 @@ class Category:
             term = " ".join(cat_parts[2:])
 
         return cls(
+            heraldic=HeraldicFeature(
+                feature_type=to_feature_type(category), subtype=subtype, code=code
+            ),
             category=category,
-            code=code,
             terms=[]
             if not term or term.startswith("not") or term == "other"
             else [term],
-            cat_type=cat_type,
-            subtype=subtype,
         )
 
 
@@ -182,7 +180,12 @@ def load_parsed_catalog(src: Path) -> ParsedCatalog:
     return ParsedCatalog(
         features=[FeatureRelation(**f) for f in data["features"]],
         feature_index=data["feature_index"],
-        categories={k: Category(**v) for k, v in data["categories"].items()},
+        categories={
+            k: Category(
+                heraldic=HeraldicFeature(**v["heraldic"]), category=k, terms=v["terms"]
+            )
+            for k, v in data["categories"].items()
+        },
         category_lookup=data["category_lookup"],
         cross_references=[CrossReference(**c) for c in data["cross_references"]],
     )
