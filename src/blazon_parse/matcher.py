@@ -36,9 +36,25 @@ def find_matches(blazon: str, terms: list[str]) -> dict[tuple[int, int], list[st
     return findings
 
 
+def _dedup_features(
+    findings: dict[tuple[int, int], list[tuple[str, HeraldicFeature]]],
+) -> dict[tuple[int, int], list[HeraldicFeature]]:
+    deduped: dict[tuple[int, int], list[HeraldicFeature]] = {}
+    for span, features in findings.items():
+        seen_types: set[tuple[FeatureType, str]] = set()
+        span_features: list[HeraldicFeature] = []
+        for _, feat in features:
+            key = (feat.feature_type, feat.subtype)
+            if key not in seen_types:
+                span_features.append(feat)
+                seen_types.add(key)
+        deduped[span] = span_features
+    return deduped
+
+
 def find_catalog_matches(
     blazon: str, catalog: ParsedCatalog
-) -> dict[tuple[int, int], list[tuple[str, HeraldicFeature]]]:
+) -> dict[tuple[int, int], list[HeraldicFeature]]:
     blazon = blazon.lower()
     findings: dict[tuple[int, int], list[tuple[str, HeraldicFeature]]] = {}
 
@@ -50,7 +66,9 @@ def find_catalog_matches(
             findings.setdefault(span, []).extend(
                 (
                     val,
-                    HeraldicFeature(feature_type=FeatureType.count, subtype=k, code=k),
+                    HeraldicFeature(
+                        feature_type=FeatureType.count, subtype=str(k), code=str(k)
+                    ),
                 )
                 for val in v
             )
@@ -62,7 +80,6 @@ def find_catalog_matches(
                 HeraldicFeature(
                     feature_type=to_feature_type(ftype),
                     subtype=ftype,
-                    code="?",
                     details=term,
                 ),
             )
@@ -76,7 +93,7 @@ def find_catalog_matches(
         for span in find_all(blazon, term.lower()):
             findings.setdefault(span, []).extend(categories)
 
-    return _drop_contained(findings)
+    return _dedup_features(_drop_contained(findings))
 
 
 def _drop_contained(

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from enum import StrEnum, auto
 
 
@@ -24,7 +25,7 @@ def to_feature_type(category: str) -> FeatureType:
     if category in FEATURE_TYPE_MAP:
         return FEATURE_TYPE_MAP[category]
 
-    for key, value in FEATURE_TYPE_MAP.items():
+    for key, value in sorted(FEATURE_TYPE_MAP.items(), reverse=True):
         if key in category:
             return value
 
@@ -35,5 +36,38 @@ def to_feature_type(category: str) -> FeatureType:
 class HeraldicFeature:
     feature_type: FeatureType
     subtype: str
-    code: str
+    code: str = ""
     details: str | None = None
+
+
+@dataclass
+class HeraldicField:
+    tincture: HeraldicFeature
+    division: HeraldicFeature | None = None
+    secondary_tincture: HeraldicFeature | None = None
+    treatment: HeraldicFeature | None = None
+
+
+@dataclass
+class HeraldicCharge:
+    charge: HeraldicFeature
+    count: HeraldicFeature | None = None
+    tincture: HeraldicFeature | None = None
+    secondary_tincture: HeraldicFeature | None = None
+    posture: HeraldicFeature | None = None
+    arrangement: HeraldicFeature | None = None
+    treatment: HeraldicFeature | None = None
+
+
+@dataclass
+class HeraldicChargeGroup:
+    charges: list[HeraldicCharge] = dataclass_field(default_factory=list)
+    relation: HeraldicFeature | None = None
+
+
+@dataclass
+class HeraldicBlazon:
+    field: HeraldicField
+    primary: HeraldicChargeGroup | None = None
+    secondary: HeraldicChargeGroup | None = None
+    tertiary: HeraldicChargeGroup | None = None

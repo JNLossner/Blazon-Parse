@@ -1,13 +1,13 @@
 import argparse
 from pathlib import Path
 
+from blazon_parse.blazon_parser import parse_blazon
 from blazon_parse.catalog import get_updated_catalog
 from blazon_parse.catalog_parser import (
     load_parsed_catalog,
     parse_catalog_file,
     save_parsed_catalog,
 )
-from blazon_parse.matcher import find_catalog_matches
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 CATALOG_PATH = PROJECT_ROOT / "data" / "my.cat"
@@ -29,21 +29,7 @@ def main() -> None:
         f"Loaded catalog: {len(catalog.categories)} categories, {len(catalog.features)} features."
     )
 
-    print(args.blazon)
-    matches = find_catalog_matches(args.blazon, catalog)
-
-    unmatched = list(args.blazon.lower())
-    for (start, end), found in sorted(matches.items()):
-        unmatched[start:end] = " " * (end - start)
-        print(
-            start,
-            args.blazon[start:end],
-            [
-                f'("{term}" = {heraldic.feature_type}, {heraldic.subtype}, {heraldic.code})'
-                for term, heraldic in found
-            ],
-        )
-    print("unmatched:", "".join(unmatched))
+    parse_blazon(args.blazon, catalog)
 
 
 if __name__ == "__main__":
