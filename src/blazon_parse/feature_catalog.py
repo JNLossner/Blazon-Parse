@@ -1,8 +1,11 @@
 import json
+import re
 from collections.abc import KeysView
 from dataclasses import asdict, dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
+
+import inflect
 
 from blazon_parse.catalog_parser import (
     Category,
@@ -12,6 +15,9 @@ from blazon_parse.catalog_parser import (
     decode_daud,
 )
 from blazon_parse.heraldic import HeraldicFeature, to_feature_type
+
+_inflect = inflect.engine()
+_COUNT_TERM_RE = re.compile(r"^(?P<prefix>of )?(?P<digit>\d+)$")
 
 
 @dataclass
@@ -33,6 +39,19 @@ def _index_term(term_index: dict[str, list[int]], term: str, idx: int) -> None:
     indices = term_index.setdefault(term, [])
     if idx not in indices:
         indices.append(idx)
+
+
+def _add_count_word_terms(term_index: dict[str, list[int]]) -> None:
+    """Index each digit term's word form too ("3"/"of 3" -> "three"/"of three")."""
+    for term in list(term_index):
+        if not (match := _COUNT_TERM_RE.match(term)):
+            continue
+        prefix = match["prefix"] or ""
+        word = prefix + _inflect.number_to_words(int(match["digit"]))
+        keys = [word, "a ", "an "] if term == "1" else [word]
+        for idx in term_index[term]:
+            for key in keys:
+                _index_term(term_index, key, idx)
 
 
 def parse_catalog(text: str) -> FeatureCatalog:
@@ -103,6 +122,7 @@ def parse_catalog(text: str) -> FeatureCatalog:
                 _index_term(term_index, reference.term, idx)
 
     _add_plural_keys(term_index)
+    _add_count_word_terms(term_index)
 
     return FeatureCatalog(
         relations=relations,
