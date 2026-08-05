@@ -17,12 +17,16 @@ PARSED_CATALOG_PATH = PROJECT_ROOT / "data" / "my_catalog.json"
 def main() -> None:
     parser = argparse.ArgumentParser(description="Parse an SCA heraldry blazon.")
     parser.add_argument("blazon", help="The blazon text to parse")
+    parser.add_argument(
+        "-u", "--update", help="Update parsed my.cat catalog", action="store_true"
+    )
     args = parser.parse_args()
 
-    _, updated = get_updated_catalog(CATALOG_PATH)
-    if updated or not PARSED_CATALOG_PATH.exists():
-        save_parsed_catalog(parse_catalog_file(CATALOG_PATH), PARSED_CATALOG_PATH)
-        print("Updated my.cat catalog.")
+    if args.update:
+        _, updated = get_updated_catalog(CATALOG_PATH)
+        if updated or not PARSED_CATALOG_PATH.exists():
+            save_parsed_catalog(parse_catalog_file(CATALOG_PATH), PARSED_CATALOG_PATH)
+            print("Updated my.cat catalog.")
 
     catalog = load_parsed_catalog(PARSED_CATALOG_PATH)
     print(
