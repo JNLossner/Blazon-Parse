@@ -7,17 +7,146 @@ from pathlib import Path
 
 import inflect
 
-from blazon_parse.catalog_parser import (
-    Category,
-    CrossReference,
-    FeatureRelation,
-    _add_plural_keys,
-    decode_daud,
-)
 from blazon_parse.heraldic import HeraldicFeature, to_feature_type
 
 _inflect = inflect.engine()
 _COUNT_TERM_RE = re.compile(r"^(?P<prefix>of )?(?P<digit>\d+)$")
+
+_CROSS_REFERENCE_RE = re.compile(
+    r"^(?P<term>.+?) - see(?P<also> also)? (?P<targets>.+)$"
+)
+
+# Da'ud notation: my.cat's ASCII-safe encoding for accented characters.
+# Full reference: https://heraldry.sca.org/daud_notation.pdf
+_DAUD_CHARACTERS: dict[str, str] = json.loads(
+    (Path(__file__).parent / "daud_notation.json").read_text(encoding="utf-8")
+)
+_DAUD_RE = re.compile(r"\{([^{}]*)\}")
+
+
+def decode_daud(text: str) -> str:
+    """Replace {code} sequences with their Unicode character; leave unknown codes as-is."""
+
+    def replace(match: re.Match[str]) -> str:
+        return _DAUD_CHARACTERS.get(match[1], match[0])
+
+    return _DAUD_RE.sub(replace, text)
+
+
+@dataclass
+class FeatureRelation:
+    """A chain of relationship tiers within a feature set.
+
+    tiers is ordered most-specific first; each tier is a set of synonyms, and
+    each tier rolls up to the next, e.g. "seme<5 or more<2 or more=6=7=8=9=10 or more"
+    becomes [["seme"], ["5 or more"], ["2 or more", "6", "7", "8", "9", "10 or more"]].
+    """
+
+    feature_set: str
+    tiers: list[list[str]]
+
+    @classmethod
+    def from_line(cls, line: str) -> FeatureRelation | None:
+        if not line.startswith("|"):
+            return None
+        feature_set, _, rest = line.split("|")[-1].partition(":")
+        tiers = [tier.split("=") for tier in rest.split("<")]
+        return cls(feature_set=feature_set, tiers=tiers)
+
+
+@dataclass
+class CrossReference:
+    term: str
+    see_also: bool
+    targets: list[str]
+
+    @classmethod
+    def from_line(cls, line: str) -> CrossReference | None:
+        match = _CROSS_REFERENCE_RE.match(line)
+        if not match:
+            return None
+        return cls(
+            term=match["term"],
+            see_also=match["also"] is not None,
+            targets=match["targets"].split(" and "),
+        )
+
+
+@dataclass
+class Category:
+    heraldic: HeraldicFeature
+    category: str
+    terms: list[str]
+    # For 3-part categories, the outer name (e.g. "arrangement" in
+    # "arrangement, creature, addorsed") - the *fixed* dimension, as opposed
+    # to cat_parts[1] which becomes `subtype` and varies. None otherwise.
+    # Keeps merge_key in parse_catalog() from conflating unrelated categories
+    # that only coincidentally share a term (e.g. "beast, cat" the animal vs
+    # "head, beast, cat" a cat's head, both ending in the term "cat").
+    kind: str | None = None
+
+    @classmethod
+    def from_line(cls, line: str) -> Category | None:
+        if line.startswith("|") or "|" not in line:
+            return None
+        category, code = line.split("|", 1)
+        term = category
+
+        cat_parts = [s.strip() for s in category.split(",") if "as charge" not in s]
+        cat_type = cat_parts[0]
+        subtype = ""
+        kind = None
+
+        words = cat_type.split(" ")
+        term = " ".join([word for word in words if word != "field"])
+
+        if len(cat_parts) > 1:
+            term = " ".join(cat_parts[1:])
+
+        if len(cat_parts) > 2 and cat_type not in [
+            "monster",
+            "charge treatment",
+            "field treatment",
+        ]:
+            subtype = cat_parts[1]
+            term = " ".join(cat_parts[2:])
+            kind = cat_type
+        elif len(cat_parts) == 2:
+            # The same term can carry a different code per governing type
+            # (e.g. "demi" is BEAST9DEMI, BIRD9DEMI, MONSTER9DEMI...) - keep
+            # that type as the subtype so codes for the same term can merge
+            # into one feature, keyed by subtype, in parse_catalog().
+            subtype = cat_type
+
+        return cls(
+            heraldic=HeraldicFeature(
+                feature_type=to_feature_type(category),
+                subtype=subtype,
+                codes={subtype: code},
+            ),
+            category=category,
+            terms=[]
+            if not term or term.startswith("not") or term == "other"
+            else [term],
+            kind=kind,
+        )
+
+
+def _pluralize(term: str) -> str:
+    plural = _inflect.plural_noun(term)
+    return plural if plural else term
+
+
+def _add_plural_keys(lookup: dict[str, list]) -> None:
+    """Add each term's plural as an additional key mapping to the same values.
+
+    Blazons commonly use the plural (e.g. "three roses"), so lookups need to
+    recognize both forms.
+    """
+    for term in list(lookup):
+        plural = _pluralize(term)
+        if plural != term:
+            lookup.setdefault(plural, []).extend(lookup[term])
 
 
 @dataclass
@@ -140,4 +269,14 @@ def save_catalog(catalog: FeatureCatalog, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(
         json.dumps(asdict(catalog), indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def load_catalog(src: Path) -> FeatureCatalog:
+    data = json.loads(src.read_text(encoding="utf-8"))
+    return FeatureCatalog(
+        relations=[FeatureRelation(**r) for r in data["relations"]],
+        features=[HeraldicFeature(**f) for f in data["features"]],
+        term_index=data["term_index"],
+        category_index=data["category_index"],
     )

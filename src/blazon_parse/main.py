@@ -3,10 +3,10 @@ from pathlib import Path
 
 from blazon_parse.blazon_parser import parse_blazon
 from blazon_parse.catalog import get_updated_catalog
-from blazon_parse.catalog_parser import (
-    load_parsed_catalog,
+from blazon_parse.feature_catalog import (
+    load_catalog,
     parse_catalog_file,
-    save_parsed_catalog,
+    save_catalog,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -22,15 +22,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    reparse_catalog = not PARSED_CATALOG_PATH.exists()
     if args.update:
         _, updated = get_updated_catalog(CATALOG_PATH)
-        if updated or not PARSED_CATALOG_PATH.exists():
-            save_parsed_catalog(parse_catalog_file(CATALOG_PATH), PARSED_CATALOG_PATH)
-            print("Updated my.cat catalog.")
+        if updated:
+            reparse_catalog = True
+    if reparse_catalog:
+        save_catalog(parse_catalog_file(CATALOG_PATH), PARSED_CATALOG_PATH)
+        print("Updated my.cat catalog.")
 
-    catalog = load_parsed_catalog(PARSED_CATALOG_PATH)
+    catalog = load_catalog(PARSED_CATALOG_PATH)
     print(
-        f"Loaded catalog: {len(catalog.categories)} categories, {len(catalog.features)} features."
+        f"Loaded catalog: {len(catalog.features)} features, {len(catalog.terms())} terms."
     )
 
     print(args.blazon)

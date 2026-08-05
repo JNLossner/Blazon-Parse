@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 
-from blazon_parse.catalog_parser import ParsedCatalog
+from blazon_parse.feature_catalog import FeatureCatalog
 from blazon_parse.heraldic import (
     FeatureType,
     HeraldicBlazon,
@@ -14,7 +14,7 @@ from blazon_parse.matcher import find_catalog_matches
 
 
 def get_blazon_features(
-    blazon: str, catalog: ParsedCatalog
+    blazon: str, catalog: FeatureCatalog
 ) -> tuple[
     dict[tuple[int, int], list[HeraldicFeature]],
     dict[tuple[int, int], str],
@@ -167,7 +167,7 @@ class ChargeGroupBuilder:
         )
 
 
-def build_blazon(blazon: str, catalog: ParsedCatalog) -> HeraldicBlazon:
+def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
     matches, unmatched = get_blazon_features(blazon, catalog)
 
     field: HeraldicField | None = None
@@ -226,7 +226,7 @@ def build_blazon(blazon: str, catalog: ParsedCatalog) -> HeraldicBlazon:
     )
 
 
-def parse_blazon(blazon: str, catalog: ParsedCatalog) -> list[str]:
+def parse_blazon(blazon: str, catalog: FeatureCatalog) -> list[str]:
     blazon_struct = build_blazon(blazon, catalog)
     terms = blazon_struct.search_terms()
     return terms
