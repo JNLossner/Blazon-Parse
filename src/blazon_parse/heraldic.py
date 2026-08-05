@@ -36,17 +36,30 @@ def to_feature_type(category: str) -> FeatureType:
 class HeraldicFeature:
     feature_type: FeatureType
     subtype: str
-    code: str = ""
+    codes: dict[str, str] = dataclass_field(default_factory=dict)
     details: str | None = None
 
-    def search_term(self) -> str | None:
+    @property
+    def code(self) -> str:
+        """This feature's own code, or an arbitrary one if it's scope-ambiguous.
+
+        Some catalog terms (e.g. "demi") carry a different code per governing
+        scope ("beast" vs "bird" vs "monster"...), stored in `codes` keyed by
+        that scope. Reading `.code` without knowing the real scope just picks
+        one; callers that know the scope should use `search_term(scope=...)`.
+        """
+        return self.codes.get(self.subtype) or next(iter(self.codes.values()), "")
+
+    def search_term(self, scope: str | None = None) -> str | None:
         """The literal string an O&A complex search would match on.
 
         Catalog categories (charges, field patterns, ordinaries...) carry a
-        translated `code` (e.g. "CAT", "AR"); features with no catalog code
+        translated code (e.g. "CAT", "AR"); features with no catalog code
         (bare tinctures, postures, relations) search on the matched text
         itself.
         """
+        if scope is not None and scope in self.codes:
+            return self.codes[scope]
         return self.code or self.details
 
 
@@ -78,15 +91,26 @@ class HeraldicField:
 
     def search_terms(self) -> list[str]:
         tincture_tags = _tincture_tags(self.tincture, self.secondary_tincture)
-        division_tags = _tags(self.division) or ["solid"]
+
+        # A division with its own code (e.g. "per bend" -> PB) is its own
+        # line, same as a coded treatment - not a tag folded into "FIELD:".
+        lines = []
+        if self.division is not None and self.division.code:
+            lines.append(_line(self.division.search_term(), []))
+            division_tags = []
+        else:
+            division_tags = _tags(self.division) or ["solid"]
 
         if self.treatment is not None and self.treatment.code:
-            lines = [_line("FIELD", [*division_tags, *tincture_tags])]
+            lines.insert(0, _line("FIELD", [*division_tags, *tincture_tags]))
             lines.append(_line(self.treatment.search_term(), tincture_tags))
         else:
-            lines = [
-                _line("FIELD", [*division_tags, *tincture_tags, *_tags(self.treatment)])
-            ]
+            lines.insert(
+                0,
+                _line(
+                    "FIELD", [*division_tags, *tincture_tags, *_tags(self.treatment)]
+                ),
+            )
 
         return lines
 
