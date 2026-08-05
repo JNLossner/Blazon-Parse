@@ -29,7 +29,8 @@ def main() -> None:
         f"Loaded catalog: {len(catalog.categories)} categories, {len(catalog.features)} features."
     )
 
-    parse_blazon(args.blazon, catalog)
+    print(args.blazon)
+    print(parse_blazon(args.blazon, catalog))
 
 
 if __name__ == "__main__":

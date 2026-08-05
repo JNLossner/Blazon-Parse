@@ -226,7 +226,7 @@ def build_blazon(blazon: str, catalog: ParsedCatalog) -> HeraldicBlazon:
     )
 
 
-def parse_blazon(blazon: str, catalog: ParsedCatalog):
+def parse_blazon(blazon: str, catalog: ParsedCatalog) -> list[str]:
     blazon_struct = build_blazon(blazon, catalog)
-    print(blazon)
-    print(blazon_struct)
+    terms = blazon_struct.search_terms()
+    return terms
