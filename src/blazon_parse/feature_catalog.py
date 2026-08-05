@@ -11,7 +11,7 @@ from blazon_parse.catalog_parser import (
     _add_plural_keys,
     decode_daud,
 )
-from blazon_parse.heraldic import HeraldicFeature
+from blazon_parse.heraldic import HeraldicFeature, to_feature_type
 
 
 @dataclass
@@ -74,6 +74,28 @@ def parse_catalog(text: str) -> FeatureCatalog:
             category_index[category.category] = idx
         else:
             raise ValueError(f"my.cat:{lineno}: unrecognized line format: {raw_line!r}")
+
+    for relation in relations:
+        feat_type = to_feature_type(relation.feature_set)
+        term = " ".join(
+            t
+            for t in relation.tiers[0][0].split(" ")
+            if t not in relation.feature_set.split("_")
+        )
+        base_term = term.removeprefix("~").removeprefix("and ").strip()
+
+        merge_key = (feat_type, base_term) if term else None
+
+        if merge_key and (idx := merge_index.get(merge_key)) is None:
+            features.append(
+                HeraldicFeature(feature_type=feat_type, subtype="", details=base_term)
+            )
+            idx = len(features) - 1
+            if merge_key:
+                merge_index[merge_key] = idx
+
+        features[idx].codes[relation.feature_set] = term
+        _index_term(term_index, term, idx)
 
     for reference in cross_references:
         for target in reference.targets:

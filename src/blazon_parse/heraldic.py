@@ -14,6 +14,8 @@ class FeatureType(StrEnum):
     count = auto()
     arrangement = auto()
     relation = auto()
+    line = auto()
+    group = auto()
 
 
 FEATURE_TYPE_MAP: dict[str, FeatureType] = {
@@ -28,6 +30,21 @@ def to_feature_type(category: str) -> FeatureType:
     for key, value in sorted(FEATURE_TYPE_MAP.items(), reverse=True):
         if key in category:
             return value
+
+    if category == "number":
+        return FeatureType.count
+
+    if "orientation" in category:
+        return FeatureType.posture
+    if "_dir" in category:
+        return FeatureType.posture
+
+    if category in ("tertiaries", "style"):
+        return FeatureType.charge_treatment
+    if "type" in category:
+        return FeatureType.charge_treatment
+    if "family" in category:
+        return FeatureType.charge_treatment
 
     return FeatureType.charge
 
