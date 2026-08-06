@@ -254,9 +254,11 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
     )
 
 
-def parse_blazon(blazon: str, catalog: FeatureCatalog) -> list[str]:
+def parse_blazon(
+    blazon: str, catalog: FeatureCatalog, *, include_variants: bool = False
+) -> list[str]:
     blazon_struct = build_blazon(blazon, catalog)
-    terms = blazon_struct.search_terms()
+    terms = blazon_struct.search_terms(include_variants=include_variants)
     return terms
 
 
@@ -266,8 +268,14 @@ class TermGroup:
     terms: list[str]
 
 
-def grouped_search_terms(blazon: HeraldicBlazon) -> list[TermGroup]:
-    """Search terms grouped by the blazon section that produced them."""
+def grouped_search_terms(
+    blazon: HeraldicBlazon, *, include_variants: bool = False
+) -> list[TermGroup]:
+    """Search terms grouped by the blazon section that produced them.
+
+    `include_variants` controls whether a charge resolved from a variant term
+    (e.g. "chicken" -> BIRD) gets an extra variant tag.
+    """
     groups = []
     if blazon.field:
         groups.append(TermGroup("Field", blazon.field.search_terms()))
@@ -282,7 +290,9 @@ def grouped_search_terms(blazon: HeraldicBlazon) -> list[TermGroup]:
             groups.append(
                 TermGroup(
                     f"{label} charge {i}: {charge.charge.subtype}",
-                    charge.search_terms(),
+                    charge.search_terms(include_variants=include_variants),
                 )
             )
+    if len(groups) == 1 and groups[0].label == "Field":
+        groups.append(TermGroup("Uncharged", ["FO"]))
     return [g for g in groups if g.terms]

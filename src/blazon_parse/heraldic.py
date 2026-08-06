@@ -91,8 +91,10 @@ def _tincture_tags(
 ) -> list[str]:
     """Tincture tags, stripping the "~" parti-tincture marker when there's no pair."""
     secondary_term = secondary.search_term(scope="tincture2") if secondary else None
-    primary_term = tincture.search_term(
-        scope=("tincture1" if secondary_term else "tincture") if tincture else None
+    primary_term = (
+        tincture.search_term(scope=("tincture1" if secondary_term else "tincture"))
+        if tincture
+        else None
     )
 
     return [term for term in (primary_term, secondary_term) if term]
@@ -153,7 +155,7 @@ class HeraldicCharge:
     arrangement: HeraldicFeature | None = None
     treatment: HeraldicFeature | None = None
 
-    def search_terms(self) -> list[str]:
+    def search_terms(self, *, include_variants: bool = False) -> list[str]:
         code = self.charge.search_term()
         if not code:
             return []
@@ -169,13 +171,13 @@ class HeraldicCharge:
         plain_modifiers = [m for m in modifiers if m is not None and not m.code]
 
         charge_tags = [*shared_tags, *_tags(*plain_modifiers)]
-        lines = [_line(code, charge_tags)]
 
         # A charge resolved from a variant term (e.g. "chicken" -> BIRD)
-        # carries that variant in `details` alongside its own code. Emit both
-        # the plain and variant-tagged line.
-        if self.charge.code and self.charge.details:
-            lines.append(_line(code, [*charge_tags, self.charge.details]))
+        # carries that variant in `details` alongside its own code.
+        if include_variants and self.charge.code and self.charge.details:
+            lines = [_line(code, [*charge_tags, self.charge.details])]
+        else:
+            lines = [_line(code, charge_tags)]
 
         lines.extend(_line(m.search_term(), shared_tags) for m in coded_modifiers)
         return lines
@@ -188,8 +190,12 @@ class HeraldicChargeGroup:
     charges: list[HeraldicCharge] = dataclass_field(default_factory=list)
     relation: HeraldicFeature | None = None
 
-    def search_terms(self) -> list[str]:
-        return [line for charge in self.charges for line in charge.search_terms()]
+    def search_terms(self, *, include_variants: bool = False) -> list[str]:
+        return [
+            line
+            for charge in self.charges
+            for line in charge.search_terms(include_variants=include_variants)
+        ]
 
 
 @dataclass
@@ -199,9 +205,12 @@ class HeraldicBlazon:
     secondary: HeraldicChargeGroup | None = None
     tertiary: HeraldicChargeGroup | None = None
 
-    def search_terms(self) -> list[str]:
+    def search_terms(self, *, include_variants: bool = False) -> list[str]:
         terms = self.field.search_terms() if self.field else []
-        for group in (self.primary, self.secondary, self.tertiary):
+        charges = (self.primary, self.secondary, self.tertiary)
+        if not any(c for c in charges):
+            terms.append("FO")
+        for group in charges:
             if group:
-                terms.extend(group.search_terms())
+                terms.extend(group.search_terms(include_variants=include_variants))
         return terms
