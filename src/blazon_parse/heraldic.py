@@ -110,6 +110,8 @@ class HeraldicField:
     division: HeraldicFeature | None = None
     secondary_tincture: HeraldicFeature | None = None
     treatment: HeraldicFeature | None = None
+    # The division's edge treatment (e.g. "per bend indented" -> "indented"),
+    line: HeraldicFeature | None = None
 
     def search_terms(self) -> list[str]:
         # A specifically-coded line (PB, a FIELD TREATMENT-... code) drops
@@ -120,6 +122,7 @@ class HeraldicField:
             self.tincture or self.treatment, self.secondary_tincture
         )
         bare_primary_tags = [t.removeprefix("~ ") for t in tincture_tags]
+        division_tags = [*bare_primary_tags, *_tags(self.line)]
 
         division_coded = self.division and self.division.code
         treatment_coded = self.treatment and self.treatment.code
@@ -135,10 +138,17 @@ class HeraldicField:
             lines.append(self.tincture.search_term(scope="FIELD"))
 
         if division_coded:
-            lines.append(_line(self.division.search_term(), bare_primary_tags))
+            lines.append(_line(self.division.search_term(), division_tags))
             if "divided" in self.division.codes:
                 lines.append(
-                    _line("FIELD", [self.division.codes["divided"], *tincture_tags])
+                    _line(
+                        "FIELD",
+                        [
+                            self.division.codes["divided"],
+                            *tincture_tags,
+                            *_tags(self.line),
+                        ],
+                    )
                 )
 
         if not treatment_coded:
@@ -170,23 +180,32 @@ class HeraldicCharge:
     posture: HeraldicFeature | None = None
     arrangement: HeraldicFeature | None = None
     treatment: HeraldicFeature | None = None
+    # The charge's own edge treatment (e.g. "a chief embattled" -> "embattled")
+    line: HeraldicFeature | None = None
+    # Something else sits "on" this charge.
+    charged: bool = False
 
-    def search_terms(self, *, include_variants: bool = False) -> list[str]:
+    def search_terms(
+        self, *, include_variants: bool = False, group_tag: str | None = None
+    ) -> list[str]:
         code = self.charge.search_term()
         if not code:
             return []
 
         # Attributes with their own catalog code (e.g. "demi" -> BEAST9DEMI)
-        # become their own line, carrying only count/points/tincture
+        # become their own line, carrying only count/points/tincture/group
         shared_tags = [
             *_tags(self.count, self.points),
             *_tincture_tags(self.tincture or self.treatment, self.secondary_tincture),
+            *([group_tag] if group_tag else []),
         ]
         modifiers = [self.arrangement, self.treatment]
         coded_modifiers = [m for m in modifiers if m is not None and m.code]
         plain_modifiers = [m for m in modifiers if m is not None and not m.code]
 
-        charge_tags = [*shared_tags, *_tags(self.posture, *plain_modifiers)]
+        charge_tags = [*shared_tags, *_tags(self.posture, self.line, *plain_modifiers)]
+        if self.charged:
+            charge_tags.append("charged")
 
         # A charge resolved from a variant term (e.g. "chicken" -> BIRD)
         # carries that variant in `details` alongside its own code.
@@ -206,27 +225,46 @@ class HeraldicChargeGroup:
     charges: list[HeraldicCharge] = dataclass_field(default_factory=list)
     relation: HeraldicFeature | None = None
 
-    def search_terms(self, *, include_variants: bool = False) -> list[str]:
+    def search_terms(
+        self, *, include_variants: bool = False, group_tag: str | None = None
+    ) -> list[str]:
         return [
             line
             for charge in self.charges
-            for line in charge.search_terms(include_variants=include_variants)
+            for line in charge.search_terms(
+                include_variants=include_variants, group_tag=group_tag
+            )
         ]
 
 
 @dataclass
 class HeraldicBlazon:
+    """The standard SCA blazon grammar: (1) field, (2) primary, (3) secondary
+    immediately around the primary, (4) tertiary on (2) or (3), (5) peripheral
+    secondary, (6) tertiary on (5). Currently unmodeled: (7) brisures, (8) augmentations.
+    """
+
     field: HeraldicField | None
     primary: HeraldicChargeGroup | None = None
     secondary: HeraldicChargeGroup | None = None
     tertiary: HeraldicChargeGroup | None = None
+    peripheral: HeraldicChargeGroup | None = None
+    peripheral_tertiary: HeraldicChargeGroup | None = None
 
     def search_terms(self, *, include_variants: bool = False) -> list[str]:
         terms = self.field.search_terms() if self.field else []
-        charges = (self.primary, self.secondary, self.tertiary)
-        if not any(c for c in charges):
+        charge_groups = (
+            (self.primary, "primary"),
+            (self.secondary, "second"),
+            (self.tertiary, "tertiary"),
+            (self.peripheral, None),
+            (self.peripheral_tertiary, "tertiary"),
+        )
+        if not any(group for group, _ in charge_groups):
             terms.append("FO")
-        for group in charges:
+        for group, tag in charge_groups:
             if group:
-                terms.extend(group.search_terms(include_variants=include_variants))
+                terms.extend(
+                    group.search_terms(include_variants=include_variants, group_tag=tag)
+                )
         return terms

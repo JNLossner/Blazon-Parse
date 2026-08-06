@@ -93,7 +93,7 @@ def resolve_field_feature(
         candidates = [
             c
             for c in candidates
-            if c.feature_type == FeatureType.field_treatment
+            if c.feature_type in (FeatureType.field_treatment, FeatureType.line)
             or (c.feature_type == FeatureType.tincture and c.subtype != "field")
         ]
 
@@ -105,12 +105,15 @@ def build_field(field_features: list[HeraldicFeature]):
     secondary_tincture: HeraldicFeature | None = None
     division: HeraldicFeature | None = None
     treatment: HeraldicFeature | None = None
+    line: HeraldicFeature | None = None
 
     for feat in field_features:
         if feat.feature_type == FeatureType.field_division:
             division = feat
         elif feat.feature_type == FeatureType.field_treatment:
             treatment = feat
+        elif feat.feature_type == FeatureType.line:
+            line = feat
         elif tincture is None:
             tincture = feat
         else:
@@ -121,6 +124,7 @@ def build_field(field_features: list[HeraldicFeature]):
         division=division,
         secondary_tincture=secondary_tincture,
         treatment=treatment,
+        line=line,
     )
 
 
@@ -161,19 +165,41 @@ def complete_seme_feature(
 
 @dataclass
 class ChargeGroupBuilder:
+    """Builds the 5 charge groups from `HeraldicBlazon`'s grammar (see its
+    docstring) - primary, secondary-around-primary, tertiary-on-(2)-or-(3),
+    peripheral secondary, and tertiary-on-peripheral. `current` tracks which
+    of these the next unqualified charge lands in.
+    """
+
     primary: HeraldicChargeGroup = dataclass_field(default_factory=HeraldicChargeGroup)
     secondary: HeraldicChargeGroup = dataclass_field(
         default_factory=HeraldicChargeGroup
     )
     tertiary: HeraldicChargeGroup = dataclass_field(default_factory=HeraldicChargeGroup)
+    peripheral: HeraldicChargeGroup = dataclass_field(
+        default_factory=HeraldicChargeGroup
+    )
+    peripheral_tertiary: HeraldicChargeGroup = dataclass_field(
+        default_factory=HeraldicChargeGroup
+    )
     current: str = "primary"
+    # Where the *last-added* charge actually landed - usually `current`, but
+    # a peripheral redirected out of "primary" (see add_charge) diverges from
+    # it, and apply_modifier needs to find that same charge, not whatever
+    # group `current` points at next.
+    last_group: str = "primary"
     unspecified: list[HeraldicCharge] = dataclass_field(default_factory=list)
     tertiary_after_next: bool = False
 
     def current_group(self) -> HeraldicChargeGroup:
-        return getattr(self, self.current)
+        return getattr(self, self.last_group)
 
     def mark_tertiary_after_next(self) -> None:
+        # A new "on" ends any tertiary group still open from an earlier "on
+        # X Y" clause in the same blazon ("on a bend... and on a chief...") -
+        # X here is a fresh top-level ordinary, not another tertiary of the
+        # previous X.
+        self.current = "primary"
         self.tertiary_after_next = True
 
     def enter_secondary(self, relation: HeraldicFeature) -> None:
@@ -186,11 +212,20 @@ class ChargeGroupBuilder:
         # A charge that already got its primary tincture is done collecting.
         # Starting a new charge closes that window.
         self.unspecified = [c for c in self.unspecified if c.tincture is None]
-        charge = HeraldicCharge(charge=charge_feat, count=count)
-        self.current_group().charges.append(charge)
+        charged = self.tertiary_after_next
+        group_name = self.current
+        if group_name == "primary" and charge_feat.subtype == "peripheral":
+            group_name = "peripheral"
+        charge = HeraldicCharge(charge=charge_feat, count=count, charged=charged)
+        getattr(self, group_name).charges.append(charge)
+        self.last_group = group_name
         self.unspecified.append(charge)
-        if self.tertiary_after_next:
-            self.current = "tertiary"
+        if charged:
+            # A tertiary "on" a peripheral is its own grammar step (6), kept
+            # apart from tertiaries on (2)/(3) in step (4).
+            self.current = (
+                "peripheral_tertiary" if group_name == "peripheral" else "tertiary"
+            )
             self.tertiary_after_next = False
 
     def apply_tincture(self, feat: HeraldicFeature) -> None:
@@ -217,10 +252,14 @@ class ChargeGroupBuilder:
             last_charge.treatment = feat
         elif feat.feature_type == FeatureType.count:
             last_charge.points = feat
+        elif feat.feature_type == FeatureType.line:
+            last_charge.line = feat
 
     def build(
         self,
     ) -> tuple[
+        HeraldicChargeGroup | None,
+        HeraldicChargeGroup | None,
         HeraldicChargeGroup | None,
         HeraldicChargeGroup | None,
         HeraldicChargeGroup | None,
@@ -229,6 +268,8 @@ class ChargeGroupBuilder:
             self.primary if self.primary.charges else None,
             self.secondary if self.secondary.charges else None,
             self.tertiary if self.tertiary.charges else None,
+            self.peripheral if self.peripheral.charges else None,
+            self.peripheral_tertiary if self.peripheral_tertiary.charges else None,
         )
 
 
@@ -293,12 +334,16 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
 
         charge_group_builder.apply_modifier(feat)
 
-    primary, secondary, tertiary = charge_group_builder.build()
+    primary, secondary, tertiary, peripheral, peripheral_tertiary = (
+        charge_group_builder.build()
+    )
     return HeraldicBlazon(
         field=field,
         primary=primary,
         secondary=secondary,
         tertiary=tertiary,
+        peripheral=peripheral,
+        peripheral_tertiary=peripheral_tertiary,
     )
 
 
@@ -327,10 +372,12 @@ def grouped_search_terms(
     groups = []
     if blazon.field:
         groups.append(TermGroup("Field", blazon.field.search_terms()))
-    for label, charge_group in (
-        ("Primary", blazon.primary),
-        ("Secondary", blazon.secondary),
-        ("Tertiary", blazon.tertiary),
+    for label, charge_group, group_tag in (
+        ("Primary", blazon.primary, "primary"),
+        ("Secondary", blazon.secondary, "second"),
+        ("Tertiary", blazon.tertiary, "tertiary"),
+        ("Peripheral", blazon.peripheral, None),
+        ("Peripheral tertiary", blazon.peripheral_tertiary, "tertiary"),
     ):
         if not charge_group:
             continue
@@ -338,7 +385,9 @@ def grouped_search_terms(
             groups.append(
                 TermGroup(
                     f"{label} charge {i}: {charge.charge.subtype}",
-                    charge.search_terms(include_variants=include_variants),
+                    charge.search_terms(
+                        include_variants=include_variants, group_tag=group_tag
+                    ),
                 )
             )
     if len(groups) == 1 and groups[0].label == "Field":

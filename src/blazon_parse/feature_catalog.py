@@ -26,6 +26,11 @@ _DAUD_CHARACTERS: dict[str, str] = json.loads(
 )
 _DAUD_RE = re.compile(r"\{([^{}]*)\}")
 
+# Domain knowledge my.cat doesn't encode
+_HERALDIC_KNOWLEDGE: dict = json.loads(
+    (Path(__file__).parent / "heraldic_knowledge.json").read_text(encoding="utf-8")
+)
+
 
 def decode_daud(text: str) -> str:
     """Replace {code} sequences with their Unicode character; leave unknown codes as-is."""
@@ -210,6 +215,21 @@ def _add_division_tags(
                 feat.codes.setdefault("divided", divided_term)
 
 
+def _add_peripheral_subtype(
+    features: list[HeraldicFeature], category_index: dict[str, int]
+) -> None:
+    """Mark peripheral ordinaries (chief, bordure, ...) via `subtype`, per
+    `_HERALDIC_KNOWLEDGE["peripheral_charges"]`.
+    """
+    for category in _HERALDIC_KNOWLEDGE["peripheral_charges"]:
+        idx = category_index.get(category)
+        if idx is None:
+            continue
+        feat = features[idx]
+        feat.codes["peripheral"] = feat.code
+        feat.subtype = "peripheral"
+
+
 _SEME_TREATMENT_PREFIX = "field treatment, seme, "
 
 
@@ -370,6 +390,7 @@ def parse_catalog(text: str) -> FeatureCatalog:
     _add_plural_keys(term_index)
     _add_count_word_terms(term_index)
     _add_division_tags(features, term_index)
+    _add_peripheral_subtype(features, category_index)
     seme_fallback_code = _add_seme_features(
         features, category_index, term_index, cross_references
     )
