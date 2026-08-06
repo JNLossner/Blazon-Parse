@@ -1,5 +1,7 @@
+import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlencode
 
 import requests
@@ -55,6 +57,22 @@ def build_search_url(
     return f"{OANDA_SEARCH_URL}?{urlencode(params)}"
 
 
+# O&A submission IDs encode the LoAR year/month and a kingdom code
+# as a single trailing letter, e.g. "202005X" -> May 2020, Ansteorra.
+# kingdom_codes.json is pulled from oanda_date.cgi's per-kingdom checkbox
+# field names on its "search by date" form (e.g. name="kX" -> Ansteorra)
+_SUBMISSION_ID_RE = re.compile(
+    r"^(?P<year>\d{4})(?P<month>0[1-9]|1[0-2])(?P<kingdom>[A-Za-z])?$"
+)
+_MONTH_NAMES = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]  # fmt: skip
+KINGDOM_CODES: dict[str, str] = json.loads(
+    (Path(__file__).parent / "kingdom_codes.json").read_text(encoding="utf-8")
+)
+
+
 @dataclass
 class SearchResult:
     name: str
@@ -64,6 +82,24 @@ class SearchResult:
     notes: str
     armory_lines: list[str]
     score: int
+
+    @property
+    def registration_date(self) -> str | None:
+        """ "Month YYYY" the item was registered, derived from `submission_id`."""
+        match = _SUBMISSION_ID_RE.match(self.submission_id)
+        return (
+            f"{_MONTH_NAMES[int(match['month']) - 1]} {match['year']}"
+            if match
+            else None
+        )
+
+    @property
+    def kingdom(self) -> str | None:
+        """Kingdom name derived from `submission_id`'s trailing code letter, if present."""
+        match = _SUBMISSION_ID_RE.match(self.submission_id)
+        return (
+            KINGDOM_CODES.get(match["kingdom"]) if match and match["kingdom"] else None
+        )
 
 
 # Raw results are grouped under headers like "Here is one matching item with

@@ -16,7 +16,14 @@
                 <span class="font-semibold">{{ result.blazon }}</span>
                 <span class="text-xs opacity-70">{{ result.status }}</span>
               </div>
-              <p class="text-sm opacity-70">{{ result.name }}</p>
+              <p class="text-sm opacity-70">
+                {{ result.name }}
+                {% if result.registration_date or result.kingdom %}
+                &mdash;
+                {%- if result.registration_date %} {{ result.registration_date }}{% endif -%}
+                {%- if result.kingdom %} ({{ result.kingdom }}){% endif %}
+                {% endif %}
+              </p>
               <div class="flex flex-wrap gap-1 mt-1">
                 {% for tag in result.armory_lines %}
                 <span class="badge badge-ghost badge-sm font-mono">{{ tag }}</span>
