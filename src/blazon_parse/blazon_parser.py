@@ -124,6 +124,41 @@ def build_field(field_features: list[HeraldicFeature]):
     )
 
 
+def complete_seme_feature(
+    treatment: HeraldicFeature,
+    matches: dict[tuple[int, int], list[HeraldicFeature]],
+    spans: list[tuple[int, int]],
+) -> HeraldicFeature:
+    """Fill in a "semy of X" marker's charge and/or tincture from the
+    matches right after it, popping them from `matches`/`spans` in place.
+
+    A named my.cat variant ("semy-de-lys") already carries its charge code
+    from the catalog (see `_add_seme_features`) but still needs its own
+    tincture, which - unlike every other field treatment - is independent of
+    the field's own and would otherwise be mis-bucketed as a second field
+    tincture by `build_field`. The generic fallback ("semy of acorns", no
+    catalog alias for "acorn") needs its charge discovered the same way.
+    """
+    codes = dict(treatment.codes)
+    for _ in range(2):
+        if not spans:
+            break
+        feat = next(
+            (
+                f
+                for f in matches[spans[0]]
+                if f.feature_type in (FeatureType.charge, FeatureType.tincture)
+            ),
+            None,
+        )
+        if feat is None or feat.feature_type in codes:
+            break
+        scope = "tincture" if feat.feature_type == FeatureType.tincture else None
+        codes[feat.feature_type] = feat.search_term(scope=scope)
+        matches.pop(spans.pop(0))
+    return replace(treatment, codes=codes)
+
+
 @dataclass
 class ChargeGroupBuilder:
     primary: HeraldicChargeGroup = dataclass_field(default_factory=HeraldicChargeGroup)
@@ -180,6 +215,8 @@ class ChargeGroupBuilder:
             last_charge.arrangement = feat
         elif feat.feature_type == FeatureType.charge_treatment:
             last_charge.treatment = feat
+        elif feat.feature_type == FeatureType.count:
+            last_charge.points = feat
 
     def build(
         self,
@@ -199,12 +236,20 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
     matches, unmatched = get_blazon_features(blazon, catalog)
 
     field_features: list[HeraldicFeature] = []
-    for span, candidates in sorted(matches.items()):
-        if field_feature := resolve_field_feature(candidates, field_features):
-            field_features.append(field_feature)
-            matches.pop(span)
-        else:
+    spans = sorted(matches)
+    while spans:
+        span = spans[0]
+        field_feature = resolve_field_feature(matches[span], field_features)
+        if not field_feature:
             break
+        matches.pop(span)
+        spans.pop(0)
+        if (
+            field_feature.feature_type == FeatureType.field_treatment
+            and field_feature.subtype == "seme"
+        ):
+            field_feature = complete_seme_feature(field_feature, matches, spans)
+        field_features.append(field_feature)
     if not field_features:
         field_features.extend(catalog["fieldless"])
     field: HeraldicField = build_field(field_features)
@@ -231,7 +276,10 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
             continue
 
         if feat.feature_type == FeatureType.count:
-            pending_count = feat
+            if "count" in feat.codes:
+                charge_group_builder.apply_modifier(feat)
+            else:
+                pending_count = feat
             continue
 
         if feat.feature_type == FeatureType.charge:

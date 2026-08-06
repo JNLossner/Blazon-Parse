@@ -31,11 +31,12 @@ def _dedup_features(
 def find_catalog_matches(
     blazon: str, catalog: FeatureCatalog
 ) -> dict[tuple[int, int], list[HeraldicFeature]]:
-    blazon = blazon.lower()
+    blazon = blazon.lower().replace("-", " ")
     findings: dict[tuple[int, int], list[HeraldicFeature]] = {}
 
     for term in catalog.terms():
-        for span in find_all(blazon, term.removeprefix("~").lower()):
+        match_term = term.removeprefix("~").lower().replace("-", " ")
+        for span in find_all(blazon, match_term):
             findings.setdefault(span, []).extend(catalog[term])
 
     return _drop_contained(findings)

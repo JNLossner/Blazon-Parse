@@ -172,6 +172,7 @@ class FeatureCatalog:
     features: list[HeraldicFeature]
     term_index: dict[str, list[int]]
     category_index: dict[str, int] = dataclass_field(default_factory=dict)
+    seme_fallback_code: str = ""
 
     def __getitem__(self, term: str) -> list[HeraldicFeature]:
         return [self.features[i] for i in self.term_index.get(term, [])]
@@ -207,6 +208,78 @@ def _add_division_tags(
             feat = features[idx]
             if feat.feature_type == FeatureType.field_division:
                 feat.codes.setdefault("divided", divided_term)
+
+
+_SEME_TREATMENT_PREFIX = "field treatment, seme, "
+
+
+def _add_seme_features(
+    features: list[HeraldicFeature],
+    category_index: dict[str, int],
+    term_index: dict[str, list[int]],
+    cross_references: list[CrossReference],
+) -> str:
+    """Recognize "semy of X" field patterns (e.g. "semy-de-lys azure" ->
+    `FDL:azure:seme:seme on field` + `FIELD TREATMENT-SEME (DE-LYS):azure`)
+
+    Retypes the bare "seme"/"semy" quantity terms into a generic
+    `field_treatment` marker (`subtype="seme"`, `details="other"`, coded with
+    the "(9OTHER)" fallback) - the actual charge is only known once a real
+    blazon supplies one (see `_complete_generic_seme` in blazon_parser.py).
+    For each named variant ("field treatment, seme, de lys - see also fleur
+    de lys"), retypes that catalog entry the same way and links it to its
+    charge's own code via `codes["charge"]`. If my.cat also has a direct
+    phrase alias for it ("semy de lys - see fleur de lys"), repoints that
+    alias at the named variant instead of the bare charge, so blazon text
+    resolves the whole pattern in one match, with no separate "semy" word
+    to notice. Returns the "(9OTHER)" fallback code.
+    """
+    fallback_idx = category_index.get(f"{_SEME_TREATMENT_PREFIX}other")
+    fallback_code = (
+        features[fallback_idx].codes.get("", "") if fallback_idx is not None else ""
+    )
+
+    for idxs in term_index.values():
+        for idx in idxs:
+            feat = features[idx]
+            if feat.feature_type == FeatureType.count and feat.details in (
+                "seme",
+                "semy",
+            ):
+                feat.feature_type = FeatureType.field_treatment
+                feat.subtype = "seme"
+                feat.details = "other"
+                feat.codes["seme"] = fallback_code
+
+    phrase_aliases = [
+        ref for ref in cross_references if ref.term.startswith(("semy ", "seme "))
+    ]
+
+    for reference in cross_references:
+        if (
+            not reference.term.startswith(_SEME_TREATMENT_PREFIX)
+            or not reference.targets
+        ):
+            continue
+        seme_idx = category_index.get(reference.term)
+        target_idx = category_index.get(reference.targets[0])
+        if seme_idx is None or target_idx is None:
+            continue
+        seme_feat = features[seme_idx]
+        charge_code = features[target_idx].code
+        if not seme_feat.codes.get("") or not charge_code:
+            continue
+
+        seme_feat.subtype = "seme"
+        seme_feat.details = reference.term.removeprefix(_SEME_TREATMENT_PREFIX)
+        seme_feat.codes["seme"] = seme_feat.codes[""]
+        seme_feat.codes["charge"] = charge_code
+
+        for alias in phrase_aliases:
+            if alias.targets == reference.targets:
+                term_index[alias.term] = [seme_idx]
+
+    return fallback_code
 
 
 def _add_count_word_terms(term_index: dict[str, list[int]]) -> None:
@@ -288,6 +361,8 @@ def parse_catalog(text: str) -> FeatureCatalog:
         # "X - see also Y" is a conflict-checking cross-reference, not an alias
         if reference.see_also:
             continue
+        if reference.term == "point":
+            continue
         for target in reference.targets:
             if (idx := category_index.get(target)) is not None:
                 _index_term(term_index, reference.term, idx)
@@ -295,12 +370,16 @@ def parse_catalog(text: str) -> FeatureCatalog:
     _add_plural_keys(term_index)
     _add_count_word_terms(term_index)
     _add_division_tags(features, term_index)
+    seme_fallback_code = _add_seme_features(
+        features, category_index, term_index, cross_references
+    )
 
     return FeatureCatalog(
         relations=relations,
         features=features,
         term_index=term_index,
         category_index=category_index,
+        seme_fallback_code=seme_fallback_code,
     )
 
 
@@ -322,4 +401,5 @@ def load_catalog(src: Path) -> FeatureCatalog:
         features=[HeraldicFeature(**f) for f in data["features"]],
         term_index=data["term_index"],
         category_index=data["category_index"],
+        seme_fallback_code=data.get("seme_fallback_code", ""),
     )

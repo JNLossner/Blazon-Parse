@@ -121,13 +121,16 @@ class HeraldicField:
         )
         bare_primary_tags = [t.removeprefix("~ ") for t in tincture_tags]
 
-        division_coded = self.division is not None and bool(self.division.code)
-        treatment_coded = self.treatment is not None and bool(self.treatment.code)
+        division_coded = self.division and self.division.code
+        treatment_coded = self.treatment and self.treatment.code
+        is_seme = self.treatment and self.treatment.subtype == "seme"
 
         lines = []
 
-        # A coded division or treatment carries the tincture
-        if not division_coded and not treatment_coded and self.tincture:
+        # A coded division or treatment carries the tincture - except a
+        # "semy of X" treatment, which describes an added charge, not the
+        # field's own tincture, so the base FIELD line still stands beside it.
+        if not division_coded and (not treatment_coded or is_seme) and self.tincture:
             lines.append(self.tincture.search_term(scope="field"))
             lines.append(self.tincture.search_term(scope="FIELD"))
 
@@ -138,10 +141,22 @@ class HeraldicField:
                     _line("FIELD", [self.division.codes["divided"], *tincture_tags])
                 )
 
-        if treatment_coded:
+        if not treatment_coded:
+            return lines
+
+        if not is_seme:
             lines.append(_line(self.treatment.search_term(), bare_primary_tags))
             if "FIELD" in self.treatment.codes:
                 lines.append(self.treatment.search_term(scope="FIELD"))
+        else:
+            # A "semy of X" pattern names a charge strewn across the whole
+            # field - its tincture is independent of the field's own
+            seme_tag = self.treatment.codes.get("tincture")
+            seme_tags = [seme_tag] if seme_tag else []
+            if charge_code := self.treatment.codes.get("charge"):
+                lines.append(_line(charge_code, [*seme_tags, "seme", "seme on field"]))
+            lines.append(_line(self.treatment.search_term(), seme_tags))
+
         return lines
 
 
@@ -149,6 +164,7 @@ class HeraldicField:
 class HeraldicCharge:
     charge: HeraldicFeature
     count: HeraldicFeature | None = None
+    points: HeraldicFeature | None = None
     tincture: HeraldicFeature | None = None
     secondary_tincture: HeraldicFeature | None = None
     posture: HeraldicFeature | None = None
@@ -161,16 +177,16 @@ class HeraldicCharge:
             return []
 
         # Attributes with their own catalog code (e.g. "demi" -> BEAST9DEMI)
-        # become their own line, carrying only count/tincture
+        # become their own line, carrying only count/points/tincture
         shared_tags = [
-            *_tags(self.count),
+            *_tags(self.count, self.points),
             *_tincture_tags(self.tincture or self.treatment, self.secondary_tincture),
         ]
-        modifiers = [self.posture, self.arrangement, self.treatment]
+        modifiers = [self.arrangement, self.treatment]
         coded_modifiers = [m for m in modifiers if m is not None and m.code]
         plain_modifiers = [m for m in modifiers if m is not None and not m.code]
 
-        charge_tags = [*shared_tags, *_tags(*plain_modifiers)]
+        charge_tags = [*shared_tags, *_tags(self.posture, *plain_modifiers)]
 
         # A charge resolved from a variant term (e.g. "chicken" -> BIRD)
         # carries that variant in `details` alongside its own code.
