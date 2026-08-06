@@ -258,3 +258,31 @@ def parse_blazon(blazon: str, catalog: FeatureCatalog) -> list[str]:
     blazon_struct = build_blazon(blazon, catalog)
     terms = blazon_struct.search_terms()
     return terms
+
+
+@dataclass
+class TermGroup:
+    label: str
+    terms: list[str]
+
+
+def grouped_search_terms(blazon: HeraldicBlazon) -> list[TermGroup]:
+    """Search terms grouped by the blazon section that produced them."""
+    groups = []
+    if blazon.field:
+        groups.append(TermGroup("Field", blazon.field.search_terms()))
+    for label, charge_group in (
+        ("Primary", blazon.primary),
+        ("Secondary", blazon.secondary),
+        ("Tertiary", blazon.tertiary),
+    ):
+        if not charge_group:
+            continue
+        for i, charge in enumerate(charge_group.charges, start=1):
+            groups.append(
+                TermGroup(
+                    f"{label} charge {i}: {charge.charge.subtype}",
+                    charge.search_terms(),
+                )
+            )
+    return [g for g in groups if g.terms]
