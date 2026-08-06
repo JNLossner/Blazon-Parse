@@ -7,12 +7,15 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "fastapi>=0.118.0",
     "inflect>=7.5.0",
     "requests>=2.34.2",
+    "uvicorn>=0.38.0",
 ]
 
 [project.scripts]
 blazon-parse = "blazon_parse.main:main"
+blazon-parse-web = "blazon_parse.web:run"
 
 [build-system]
 requires = ["uv_build>=0.11.14,<0.12.0"]
