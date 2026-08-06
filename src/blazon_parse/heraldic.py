@@ -7,7 +7,6 @@ class FeatureType(StrEnum):
     charge = auto()
     charge_treatment = auto()
     posture = auto()
-    field = auto()
     field_division = auto()
     field_treatment = auto()
     tincture = auto()
@@ -33,6 +32,9 @@ def to_feature_type(category: str) -> FeatureType:
 
     if category == "number":
         return FeatureType.count
+
+    if category in ("field", "fieldless"):
+        return FeatureType.field_division
 
     if "orientation" in category:
         return FeatureType.posture
@@ -88,11 +90,12 @@ def _tincture_tags(
     tincture: HeraldicFeature | None, secondary: HeraldicFeature | None
 ) -> list[str]:
     """Tincture tags, stripping the "~" parti-tincture marker when there's no pair."""
-    tags = _tags(tincture)
-    if tags and secondary is None:
-        tags = [tags[0].removeprefix("~").strip()]
-    tags.extend(_tags(secondary))
-    return tags
+    secondary_term = secondary.search_term(scope="tincture2") if secondary else None
+    primary_term = tincture.search_term(
+        scope=("tincture1" if secondary_term else "tincture") if tincture else None
+    )
+
+    return [term for term in (primary_term, secondary_term) if term]
 
 
 def _line(code: str, tags: list[str]) -> str:
@@ -107,28 +110,32 @@ class HeraldicField:
     treatment: HeraldicFeature | None = None
 
     def search_terms(self) -> list[str]:
-        tincture_tags = _tincture_tags(self.tincture, self.secondary_tincture)
+        tincture_tags = _tincture_tags(
+            self.tincture or self.treatment, self.secondary_tincture
+        )
 
-        # A division with its own code (e.g. "per bend" -> PB) is its own
-        # line, same as a coded treatment - not a tag folded into "FIELD:".
+        division_coded = self.division is not None and bool(self.division.code)
+        treatment_coded = self.treatment is not None and bool(self.treatment.code)
+
         lines = []
-        if self.division is not None and self.division.code:
-            lines.append(_line(self.division.search_term(), []))
-            division_tags = []
-        else:
-            division_tags = _tags(self.division) or ["solid"]
 
-        if self.treatment is not None and self.treatment.code:
-            lines.insert(0, _line("FIELD", [*division_tags, *tincture_tags]))
-            lines.append(_line(self.treatment.search_term(), tincture_tags))
-        else:
-            lines.insert(
-                0,
+        # A coded division or treatment carries the tincture
+        if not division_coded and not treatment_coded and self.tincture:
+            lines.append(self.tincture.search_term(scope="field"))
+            lines.append(self.tincture.search_term(scope="FIELD"))
+
+        if division_coded:
+            lines.append(_line(self.division.search_term(), tincture_tags))
+
+        if treatment_coded:
+            lines.append(
                 _line(
-                    "FIELD", [*division_tags, *tincture_tags, *_tags(self.treatment)]
-                ),
+                    self.treatment.search_term(),
+                    [t.removeprefix("~ ") for t in tincture_tags],
+                )
             )
-
+            if "FIELD" in self.treatment.codes:
+                lines.append(self.treatment.search_term(scope="FIELD"))
         return lines
 
 
@@ -151,13 +158,21 @@ class HeraldicCharge:
         # become their own line, carrying only count/tincture
         shared_tags = [
             *_tags(self.count),
-            *_tincture_tags(self.tincture, self.secondary_tincture),
+            *_tincture_tags(self.tincture or self.treatment, self.secondary_tincture),
         ]
         modifiers = [self.posture, self.arrangement, self.treatment]
         coded_modifiers = [m for m in modifiers if m is not None and m.code]
         plain_modifiers = [m for m in modifiers if m is not None and not m.code]
 
-        lines = [_line(code, [*shared_tags, *_tags(*plain_modifiers)])]
+        charge_tags = [*shared_tags, *_tags(*plain_modifiers)]
+        lines = [_line(code, charge_tags)]
+
+        # A charge resolved from a variant term (e.g. "chicken" -> BIRD)
+        # carries that variant in `details` alongside its own code. Emit both
+        # the plain and variant-tagged line.
+        if self.charge.code and self.charge.details:
+            lines.append(_line(code, [*charge_tags, self.charge.details]))
+
         lines.extend(_line(m.search_term(), shared_tags) for m in coded_modifiers)
         return lines
 
@@ -181,7 +196,7 @@ class HeraldicBlazon:
     tertiary: HeraldicChargeGroup | None = None
 
     def search_terms(self) -> list[str]:
-        terms = self.field.search_terms() if self.field else ["NO"]
+        terms = self.field.search_terms() if self.field else []
         for group in (self.primary, self.secondary, self.tertiary):
             if group:
                 terms.extend(group.search_terms())

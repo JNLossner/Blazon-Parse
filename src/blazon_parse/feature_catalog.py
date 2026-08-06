@@ -7,7 +7,7 @@ from pathlib import Path
 
 import inflect
 
-from blazon_parse.heraldic import HeraldicFeature, to_feature_type
+from blazon_parse.heraldic import FeatureType, HeraldicFeature, to_feature_type
 
 _inflect = inflect.engine()
 _COUNT_TERM_RE = re.compile(r"^(?P<prefix>of )?(?P<digit>\d+)$")
@@ -90,15 +90,13 @@ class Category:
         if line.startswith("|") or "|" not in line:
             return None
         category, code = line.split("|", 1)
+        feature_type = to_feature_type(category)
         term = category
 
         cat_parts = [s.strip() for s in category.split(",") if "as charge" not in s]
         cat_type = cat_parts[0]
         subtype = ""
         kind = None
-
-        words = cat_type.split(" ")
-        term = " ".join([word for word in words if word != "field"])
 
         if len(cat_parts) > 1:
             term = " ".join(cat_parts[1:])
@@ -118,11 +116,27 @@ class Category:
             # into one feature, keyed by subtype, in parse_catalog().
             subtype = cat_type
 
+        codes = {subtype: code}
+        details = None
+        if " field" in term:
+            term = term.replace(" field", "")
+            details = term
+            codes = {
+                "field": code,
+                "FIELD": f"FIELD:{term}:solid",
+                "tincture": details,
+                "tincture1": details,
+                "tincture2": f"~ and {details}",
+            }
+            feature_type = FeatureType.tincture
+            details = term
+
         return cls(
             heraldic=HeraldicFeature(
-                feature_type=to_feature_type(category),
+                feature_type=feature_type,
                 subtype=subtype,
-                codes={subtype: code},
+                codes=codes,
+                details=details,
             ),
             category=category,
             terms=[]
@@ -232,7 +246,7 @@ def parse_catalog(text: str) -> FeatureCatalog:
         )
         base_term = term.removeprefix("~").removeprefix("and ").strip()
 
-        merge_key = (feat_type, base_term) if term else None
+        merge_key = (feat_type, base_term, None) if term else None
 
         if merge_key and (idx := merge_index.get(merge_key)) is None:
             features.append(
