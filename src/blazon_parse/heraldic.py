@@ -110,9 +110,14 @@ class HeraldicField:
     treatment: HeraldicFeature | None = None
 
     def search_terms(self) -> list[str]:
+        # A specifically-coded line (PB, a FIELD TREATMENT-... code) drops
+        # the primary's "~" pairing marker - only the generic "FIELD:" line
+        # (whether "solid" or a "divided X" synonym) keeps both tilded, the
+        # same as a charge's tincture pair.
         tincture_tags = _tincture_tags(
             self.tincture or self.treatment, self.secondary_tincture
         )
+        bare_primary_tags = [t.removeprefix("~ ") for t in tincture_tags]
 
         division_coded = self.division is not None and bool(self.division.code)
         treatment_coded = self.treatment is not None and bool(self.treatment.code)
@@ -125,15 +130,14 @@ class HeraldicField:
             lines.append(self.tincture.search_term(scope="FIELD"))
 
         if division_coded:
-            lines.append(_line(self.division.search_term(), tincture_tags))
+            lines.append(_line(self.division.search_term(), bare_primary_tags))
+            if "divided" in self.division.codes:
+                lines.append(
+                    _line("FIELD", [self.division.codes["divided"], *tincture_tags])
+                )
 
         if treatment_coded:
-            lines.append(
-                _line(
-                    self.treatment.search_term(),
-                    [t.removeprefix("~ ") for t in tincture_tags],
-                )
-            )
+            lines.append(_line(self.treatment.search_term(), bare_primary_tags))
             if "FIELD" in self.treatment.codes:
                 lines.append(self.treatment.search_term(scope="FIELD"))
         return lines

@@ -11,6 +11,9 @@ from blazon_parse.heraldic import FeatureType, HeraldicFeature, to_feature_type
 
 _inflect = inflect.engine()
 _COUNT_TERM_RE = re.compile(r"^(?P<prefix>of )?(?P<digit>\d+)$")
+_PER_DIVISION_RE = re.compile(
+    r"^per (?P<direction>bend|chevron|fess|pale|pall|saltire)(?P<modifier> .+)?$"
+)
 
 _CROSS_REFERENCE_RE = re.compile(
     r"^(?P<term>.+?) - see(?P<also> also)? (?P<targets>.+)$"
@@ -184,6 +187,28 @@ def _index_term(term_index: dict[str, list[int]], term: str, idx: int) -> None:
         indices.append(idx)
 
 
+def _divided_term(per_term: str) -> str | None:
+    """ "per bend sinister" -> "divided bendwise sinister"; None if not a "per X" division."""
+    if not (match := _PER_DIVISION_RE.match(per_term)):
+        return None
+    return f"divided {match['direction']}wise{match['modifier'] or ''}"
+
+
+def _add_division_tags(
+    features: list[HeraldicFeature], term_index: dict[str, list[int]]
+) -> None:
+    """Cross-reference a "per X" division code with "divided Xwise" classification."""
+    for term, idxs in list(term_index.items()):
+        if (divided_term := _divided_term(term)) is None:
+            continue
+        if not term_index.get(divided_term):
+            continue
+        for idx in idxs:
+            feat = features[idx]
+            if feat.feature_type == FeatureType.field_division:
+                feat.codes.setdefault("divided", divided_term)
+
+
 def _add_count_word_terms(term_index: dict[str, list[int]]) -> None:
     """Index each digit term's word form too ("3"/"of 3" -> "three"/"of three")."""
     for term in list(term_index):
@@ -266,6 +291,7 @@ def parse_catalog(text: str) -> FeatureCatalog:
 
     _add_plural_keys(term_index)
     _add_count_word_terms(term_index)
+    _add_division_tags(features, term_index)
 
     return FeatureCatalog(
         relations=relations,
