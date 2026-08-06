@@ -4,6 +4,13 @@ from pathlib import Path
 
 import requests
 
+from blazon_parse.feature_catalog import (
+    FeatureCatalog,
+    load_catalog,
+    parse_catalog_file,
+    save_catalog,
+)
+
 CATALOG_URL = "https://oanda.sca.org/my.cat"
 
 # oanda.sca.org's Cloudflare front-end 403s the default python-requests
@@ -33,3 +40,16 @@ def get_updated_catalog(dest: Path, url: str = CATALOG_URL) -> tuple[Path, bool]
         os.utime(dest, (mtime, mtime))
 
     return dest, True
+
+
+def ensure_catalog(
+    raw_path: Path, parsed_path: Path, *, update: bool = False
+) -> tuple[FeatureCatalog, bool]:
+    """Load the parsed catalog, rebuilding it first if missing or (with update=True) stale."""
+    reparse = not parsed_path.exists()
+    if update:
+        _, updated = get_updated_catalog(raw_path)
+        reparse = reparse or updated
+    if reparse:
+        save_catalog(parse_catalog_file(raw_path), parsed_path)
+    return load_catalog(parsed_path), reparse
