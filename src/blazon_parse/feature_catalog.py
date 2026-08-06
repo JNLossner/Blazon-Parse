@@ -285,6 +285,9 @@ def parse_catalog(text: str) -> FeatureCatalog:
         _index_term(term_index, term, idx)
 
     for reference in cross_references:
+        # "X - see also Y" is a conflict-checking cross-reference, not an alias
+        if reference.see_also:
+            continue
         for target in reference.targets:
             if (idx := category_index.get(target)) is not None:
                 _index_term(term_index, reference.term, idx)
