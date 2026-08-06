@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Parse a blazon</h2>
+    <form hx-post="/parse" hx-target="#breakdown" hx-swap="innerHTML">
+      <textarea name="blazon" class="textarea textarea-bordered w-full" rows="3"
+        placeholder="Argent, a lion sable."></textarea>
+      <button type="submit" class="btn btn-primary mt-2">Parse</button>
+    </form>
+  </div>
+</div>
+
+<div id="breakdown"></div>
+<div id="search-result"></div>
+{% endblock %}

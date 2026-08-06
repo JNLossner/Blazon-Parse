@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Catalog</h2>
+    <p>Source file: <code>{{ catalog_path }}</code></p>
+    <p>Last updated: {{ last_modified }}</p>
+    <p>{{ feature_count }} features, {{ term_count }} terms.</p>
+    <button class="btn btn-primary w-fit" hx-post="/settings/update-catalog" hx-target="#catalog-status" hx-swap="innerHTML">
+      Update Catalog
+    </button>
+    <div id="catalog-status" class="mt-2"></div>
+  </div>
+</div>
+{% endblock %}

@@ -7,6 +7,7 @@ repos:
       - id: check-toml
       - id: check-yaml
       - id: check-added-large-files
+        exclude: ^src/blazon_parse/static/
       - id: check-merge-conflict
 
   - repo: https://github.com/astral-sh/ruff-pre-commit

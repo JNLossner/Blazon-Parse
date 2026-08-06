@@ -1,0 +1,54 @@
+{% if groups %}
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Search terms</h2>
+    <form id="term-form">
+      {% for group in groups %}
+      <fieldset class="fieldset border border-base-300 rounded-box p-3 mb-2">
+        <legend class="fieldset-legend">{{ group.label }}</legend>
+        {% for term in group.terms %}
+        <label class="flex items-center gap-2 cursor-pointer py-1">
+          <input type="checkbox" name="term" value="{{ term }}" class="checkbox checkbox-sm term-checkbox" checked>
+          <span class="font-mono text-sm">{{ term }}</span>
+        </label>
+        {% endfor %}
+      </fieldset>
+      {% endfor %}
+
+      <p class="text-sm"><span id="term-count">0</span>/10 selected</p>
+
+      <div class="flex gap-2 mt-2">
+        <button type="button" class="btn btn-outline" hx-post="/search/link" hx-include="#term-form" hx-target="#search-result">
+          Get O&amp;A Link
+        </button>
+        <button type="button" class="btn btn-primary" hx-post="/search/run" hx-include="#term-form" hx-target="#search-result">
+          Search Here
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  (function () {
+    function updateTermCount() {
+      var count = document.querySelectorAll(".term-checkbox:checked").length;
+      var el = document.getElementById("term-count");
+      if (el) el.textContent = count;
+    }
+    if (!window.__blazonTermListenerBound) {
+      document.body.addEventListener("change", function (e) {
+        if (e.target.classList && e.target.classList.contains("term-checkbox")) {
+          updateTermCount();
+        }
+      });
+      window.__blazonTermListenerBound = true;
+    }
+    updateTermCount();
+  })();
+</script>
+{% else %}
+<div class="alert alert-warning">
+  <span>No search terms were parsed from that blazon.</span>
+</div>
+{% endif %}

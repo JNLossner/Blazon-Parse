@@ -1,0 +1,9 @@
+{% if updated %}
+<div class="alert alert-success">
+  <span>Updated catalog: {{ feature_count }} features, {{ term_count }} terms.</span>
+</div>
+{% else %}
+<div class="alert alert-info">
+  <span>Already up to date.</span>
+</div>
+{% endif %}

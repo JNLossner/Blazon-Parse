@@ -1,0 +1,36 @@
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">O&amp;A results ({{ results|length }})</h2>
+    {% if groups %}
+    <div class="flex flex-col gap-2">
+      {% for score, items in groups %}
+      <details class="collapse collapse-arrow bg-base-100 border border-base-300" {% if loop.first %}open{% endif %}>
+        <summary class="collapse-title font-semibold">
+          Score {{ score }} ({{ items|length }})
+        </summary>
+        <div class="collapse-content">
+          <div class="flex flex-col gap-3">
+            {% for result in items %}
+            <div class="border-b border-base-200 pb-2 last:border-b-0">
+              <div class="flex justify-between items-baseline gap-2">
+                <span class="font-semibold">{{ result.blazon }}</span>
+                <span class="text-xs opacity-70">{{ result.status }}</span>
+              </div>
+              <p class="text-sm opacity-70">{{ result.name }}</p>
+              <div class="flex flex-wrap gap-1 mt-1">
+                {% for tag in result.armory_lines %}
+                <span class="badge badge-ghost badge-sm font-mono">{{ tag }}</span>
+                {% endfor %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p>No matching items found.</p>
+    {% endif %}
+  </div>
+</div>
