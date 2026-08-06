@@ -1,28 +1,44 @@
-{% if groups %}
 <div class="card bg-base-100 shadow-sm">
   <div class="card-body">
     <h2 class="card-title">Search terms</h2>
+    {% if not groups %}
+    <div class="alert alert-warning">
+      <span>No search terms were parsed from that blazon - add some manually below.</span>
+    </div>
+    {% endif %}
     <form id="term-form">
       {% for group in groups %}
       <fieldset class="fieldset border border-base-300 rounded-box p-3 mb-2">
         <legend class="fieldset-legend">{{ group.label }}</legend>
         {% for term in group.terms %}
-        <label class="flex items-center gap-2 cursor-pointer py-1">
-          <input type="checkbox" name="term" value="{{ term }}" class="checkbox checkbox-sm term-checkbox" checked>
-          <span class="font-mono text-sm">{{ term }}</span>
-        </label>
+        <div class="flex items-center gap-2 py-1 term-row">
+          <input type="checkbox" class="checkbox checkbox-sm term-toggle" checked>
+          <input type="text" name="term" value="{{ term }}" class="input input-sm input-bordered font-mono flex-1 term-text">
+          <input type="number" name="weight" value="1" min="1" step="1" class="input input-sm input-bordered w-16 weight-input">
+        </div>
         {% endfor %}
       </fieldset>
       {% endfor %}
 
-      <p class="text-sm"><span id="term-count">0</span>/10 selected</p>
+      <fieldset class="fieldset border border-base-300 rounded-box p-3 mb-2">
+        <legend class="fieldset-legend">Custom terms</legend>
+        <div id="custom-terms"></div>
+        <button type="button" id="add-term-btn" class="btn btn-sm btn-outline mt-1">+ Add term</button>
+      </fieldset>
+
+      <div class="flex items-center gap-2 mt-2">
+        <label class="text-sm" for="limit-input">Result limit</label>
+        <input type="number" id="limit-input" name="limit" value="500" min="1" step="1" class="input input-sm input-bordered w-24">
+      </div>
+
+      <p class="text-sm mt-2"><span id="term-count">0</span>/10 selected</p>
 
       <div class="flex gap-2 mt-2">
-        <button type="button" class="btn btn-outline" hx-post="/search/link" hx-include="#term-form" hx-target="#search-result">
-          Get O&amp;A Link
-        </button>
         <button type="button" class="btn btn-primary" hx-post="/search/run" hx-include="#term-form" hx-target="#search-result">
           Search Here
+        </button>
+        <button type="button" class="btn btn-outline" hx-post="/search/link" hx-include="#term-form" hx-target="#search-result">
+          Get O&amp;A Link
         </button>
       </div>
     </form>
@@ -31,14 +47,56 @@
 
 <script>
   (function () {
+    function termRow(checked) {
+      var row = document.createElement("div");
+      row.className = "flex items-center gap-2 py-1 term-row";
+      row.innerHTML =
+        '<input type="checkbox" class="checkbox checkbox-sm term-toggle"' + (checked ? " checked" : "") + '>' +
+        '<input type="text" name="term" value="" placeholder="e.g. AR" class="input input-sm input-bordered font-mono flex-1 term-text">' +
+        '<input type="number" name="weight" value="1" min="1" step="1" class="input input-sm input-bordered w-16 weight-input">' +
+        '<button type="button" class="btn btn-sm btn-ghost remove-term-btn">✕</button>';
+      return row;
+    }
+
+    function setRowEnabled(row, enabled) {
+      var text = row.querySelector(".term-text");
+      var weight = row.querySelector(".weight-input");
+      text.disabled = !enabled;
+      weight.disabled = !enabled;
+      row.classList.toggle("opacity-50", !enabled);
+    }
+
     function updateTermCount() {
-      var count = document.querySelectorAll(".term-checkbox:checked").length;
+      var count = document.querySelectorAll(".term-toggle:checked").length;
       var el = document.getElementById("term-count");
       if (el) el.textContent = count;
     }
+
+    function clampWeight(input) {
+      var value = parseInt(input.value, 10);
+      input.value = isNaN(value) || value < 1 ? 1 : value;
+    }
+
     if (!window.__blazonTermListenerBound) {
       document.body.addEventListener("change", function (e) {
-        if (e.target.classList && e.target.classList.contains("term-checkbox")) {
+        if (e.target.classList && e.target.classList.contains("term-toggle")) {
+          setRowEnabled(e.target.closest(".term-row"), e.target.checked);
+          updateTermCount();
+        }
+        if (
+          (e.target.classList && e.target.classList.contains("weight-input")) ||
+          e.target.id === "limit-input"
+        ) {
+          clampWeight(e.target);
+        }
+      });
+      document.body.addEventListener("click", function (e) {
+        if (e.target.id === "add-term-btn") {
+          document.getElementById("custom-terms").appendChild(termRow(true));
+          updateTermCount();
+        }
+        if (e.target.classList && e.target.classList.contains("remove-term-btn")) {
+          e.target.closest(".term-row").remove();
           updateTermCount();
         }
       });
@@ -47,8 +105,3 @@
     updateTermCount();
   })();
 </script>
-{% else %}
-<div class="alert alert-warning">
-  <span>No search terms were parsed from that blazon.</span>
-</div>
-{% endif %}

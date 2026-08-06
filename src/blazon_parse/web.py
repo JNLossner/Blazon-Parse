@@ -57,29 +57,45 @@ def parse(request: Request, blazon: Annotated[str, Form()]) -> HTMLResponse:
     return templates.TemplateResponse(request, "_breakdown.html", {"groups": groups})
 
 
+def _paired_weights(term: list[str], weight: list[int] | None) -> list[int]:
+    """Weights aligned to `term`, defaulting missing/non-positive entries to 1."""
+    weight = weight or []
+    return [max(1, weight[i]) if i < len(weight) else 1 for i in range(len(term))]
+
+
 @app.post("/search/link", response_class=HTMLResponse)
 def search_link(
-    request: Request, term: Annotated[list[str] | None, Form()] = None
+    request: Request,
+    term: Annotated[list[str] | None, Form()] = None,
+    weight: Annotated[list[int] | None, Form()] = None,
+    limit: Annotated[int, Form()] = 500,
 ) -> HTMLResponse:
     term = term or []
     if len(term) > MAX_TERMS:
         return templates.TemplateResponse(
             request, "_search_error.html", {"count": len(term)}
         )
-    url = build_search_url(term)
+    url = build_search_url(
+        term, weights=_paired_weights(term, weight), limit=max(1, limit)
+    )
     return templates.TemplateResponse(request, "_search_link.html", {"url": url})
 
 
 @app.post("/search/run", response_class=HTMLResponse)
 def search_run(
-    request: Request, term: Annotated[list[str] | None, Form()] = None
+    request: Request,
+    term: Annotated[list[str] | None, Form()] = None,
+    weight: Annotated[list[int] | None, Form()] = None,
+    limit: Annotated[int, Form()] = 500,
 ) -> HTMLResponse:
     term = term or []
     if len(term) > MAX_TERMS:
         return templates.TemplateResponse(
             request, "_search_error.html", {"count": len(term)}
         )
-    results = search_oanda(term)
+    results = search_oanda(
+        term, weights=_paired_weights(term, weight), limit=max(1, limit)
+    )
     groups = [
         (score, list(items)) for score, items in groupby(results, key=lambda r: r.score)
     ]

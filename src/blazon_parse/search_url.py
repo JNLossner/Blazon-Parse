@@ -10,23 +10,33 @@ OANDA_SEARCH_URL = "https://oanda.sca.org//oanda_complex.cgi"
 MAX_TERMS = 10
 
 
-def build_search_url(terms: list[str], *, raw: bool = False, limit: int = 500) -> str:
+def build_search_url(
+    terms: list[str],
+    *,
+    weights: list[int] | None = None,
+    raw: bool = False,
+    limit: int = 500,
+) -> str:
     """An O&A complex search URL for the given armory description terms.
 
     Each term fills one of the search form's numbered "armory description"
     rows (up to 10); the O&A complex search itself only supports that many.
-    `raw` switches on the "|"-delimited raw result listing (`raw=enabled`)
-    that `parse_search_results` expects, instead of the human-browsing HTML.
-    `limit` caps how many results the server returns.
+    `weights` fills the matching "w" (importance) row per term, defaulting to
+    1 for every term when omitted. `raw` switches on the "|"-delimited raw
+    result listing (`raw=enabled`) that `parse_search_results` expects,
+    instead of the human-browsing HTML. `limit` caps how many results the
+    server returns.
     """
     if len(terms) > MAX_TERMS:
         raise ValueError(
             f"O&A complex search supports at most {MAX_TERMS} terms, got {len(terms)}"
         )
+    if weights is not None and len(weights) != len(terms):
+        raise ValueError("weights must be the same length as terms")
 
     params: dict[str, str] = {}
     for i in range(1, MAX_TERMS + 1):
-        params[f"w{i}"] = "1"
+        params[f"w{i}"] = str(weights[i - 1]) if weights and i <= len(weights) else "1"
         params[f"m{i}"] = "armory description"
         params[f"p{i}"] = terms[i - 1] if i <= len(terms) else ""
 
@@ -96,10 +106,14 @@ def parse_search_results(html: str) -> list[SearchResult]:
 
 
 def search_oanda(
-    terms: list[str], *, limit: int = 500, timeout: int = 30
+    terms: list[str],
+    *,
+    weights: list[int] | None = None,
+    limit: int = 500,
+    timeout: int = 30,
 ) -> list[SearchResult]:
     """Run an O&A complex search for `terms` and return ranked results."""
-    url = build_search_url(terms, raw=True, limit=limit)
+    url = build_search_url(terms, weights=weights, raw=True, limit=limit)
     response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
     response.raise_for_status()
     return parse_search_results(response.text)
