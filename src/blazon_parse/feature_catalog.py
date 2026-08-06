@@ -302,6 +302,13 @@ def _add_seme_features(
     return fallback_code
 
 
+def _add_group_participle_terms(term_index: dict[str, list[int]]) -> None:
+    """Index each charged term's present-participle form too."""
+    for base, participle in _HERALDIC_KNOWLEDGE["group_participles"].items():
+        for idx in term_index.get(base, []):
+            _index_term(term_index, participle, idx)
+
+
 def _add_count_word_terms(term_index: dict[str, list[int]]) -> None:
     """Index each digit term's word form too ("3"/"of 3" -> "three"/"of three")."""
     for term in list(term_index):
@@ -389,6 +396,7 @@ def parse_catalog(text: str) -> FeatureCatalog:
 
     _add_plural_keys(term_index)
     _add_count_word_terms(term_index)
+    _add_group_participle_terms(term_index)
     _add_division_tags(features, term_index)
     _add_peripheral_subtype(features, category_index)
     seme_fallback_code = _add_seme_features(

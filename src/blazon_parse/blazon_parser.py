@@ -190,6 +190,7 @@ class ChargeGroupBuilder:
     last_group: str = "primary"
     unspecified: list[HeraldicCharge] = dataclass_field(default_factory=list)
     tertiary_after_next: bool = False
+    pending_held: HeraldicFeature | None = None
 
     def current_group(self) -> HeraldicChargeGroup:
         return getattr(self, self.last_group)
@@ -206,6 +207,9 @@ class ChargeGroupBuilder:
         self.current = "secondary"
         self.secondary.relation = relation
 
+    def mark_held(self, feat: HeraldicFeature) -> None:
+        self.pending_held = feat
+
     def add_charge(
         self, charge_feat: HeraldicFeature, count: HeraldicFeature | None
     ) -> None:
@@ -213,10 +217,17 @@ class ChargeGroupBuilder:
         # Starting a new charge closes that window.
         self.unspecified = [c for c in self.unspecified if c.tincture is None]
         charged = self.tertiary_after_next
-        group_name = self.current
+        held = self.pending_held
+        self.pending_held = None
+        # "maintaining a rose" etc. - a held/maintained/sustained charge is
+        # always secondary (my.cat: maintained<held<secondary<second),
+        # regardless of whatever `current` was tracking.
+        group_name = "secondary" if held else self.current
         if group_name == "primary" and charge_feat.subtype == "peripheral":
             group_name = "peripheral"
-        charge = HeraldicCharge(charge=charge_feat, count=count, charged=charged)
+        charge = HeraldicCharge(
+            charge=charge_feat, count=count, charged=charged, held=held
+        )
         getattr(self, group_name).charges.append(charge)
         self.last_group = group_name
         self.unspecified.append(charge)
@@ -321,6 +332,10 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
                 charge_group_builder.apply_modifier(feat)
             else:
                 pending_count = feat
+            continue
+
+        if feat.feature_type == FeatureType.group:
+            charge_group_builder.mark_held(feat)
             continue
 
         if feat.feature_type == FeatureType.charge:

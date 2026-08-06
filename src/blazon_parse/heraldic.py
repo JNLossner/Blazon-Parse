@@ -184,6 +184,7 @@ class HeraldicCharge:
     line: HeraldicFeature | None = None
     # Something else sits "on" this charge.
     charged: bool = False
+    held: HeraldicFeature | None = None
 
     def search_terms(
         self, *, include_variants: bool = False, group_tag: str | None = None
@@ -192,12 +193,14 @@ class HeraldicCharge:
         if not code:
             return []
 
+        placement_tag = self.held.search_term() if self.held else group_tag
+
         # Attributes with their own catalog code (e.g. "demi" -> BEAST9DEMI)
         # become their own line, carrying only count/points/tincture/group
         shared_tags = [
             *_tags(self.count, self.points),
             *_tincture_tags(self.tincture or self.treatment, self.secondary_tincture),
-            *([group_tag] if group_tag else []),
+            *([placement_tag] if placement_tag else []),
         ]
         modifiers = [self.arrangement, self.treatment]
         coded_modifiers = [m for m in modifiers if m is not None and m.code]

@@ -8,5 +8,10 @@
     "gore",
     "gyron",
     "orle"
-  ]
+  ],
+  "group_participles": {
+    "held": "holding",
+    "maintained": "maintaining",
+    "sustained": "sustaining"
+  }
 }
