@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-from blazon_parse.blazon_parser import parse_blazon
+from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
 from blazon_parse.catalog import ensure_catalog
 from blazon_parse.search_url import build_search_url
 
@@ -34,12 +34,15 @@ def main() -> None:
         f"Loaded catalog: {len(catalog.features)} features, {len(catalog.terms())} terms."
     )
 
-    terms = parse_blazon(args.blazon, catalog)
-    print(args.blazon)
+    blazon_struct = build_blazon(args.blazon, catalog)
+    print(args.blazon, "\n")
     if args.verbose:
-        print(terms)
+        for group in grouped_search_terms(blazon_struct, include_variants=True):
+            print(group.label)
+            for term in group.terms:
+                print(" " * 4, term)
     if args.search:
-        print(build_search_url(terms))
+        print(build_search_url(blazon_struct.search_terms(include_variants=False)))
 
 
 if __name__ == "__main__":
