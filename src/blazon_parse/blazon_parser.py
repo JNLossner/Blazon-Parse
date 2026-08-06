@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 
 from blazon_parse.feature_catalog import FeatureCatalog
@@ -49,24 +49,52 @@ def get_blazon_features(
 
 
 def resolve_feature(candidates: list[HeraldicFeature]) -> HeraldicFeature | None:
-    if coded := [c for c in candidates if c.code]:
-        candidates = coded
-    if tincture1 := [c for c in candidates if c.subtype == "tincture1"]:
-        candidates = tincture1
+    """Pick the candidate feature for a matched span, folding in a same-span variant tag."""
+    if not candidates:
+        return None
 
-    return None if not candidates else candidates[0]
+    coded = [c for c in candidates if c.codes.get(c.subtype)]
+    scoped = coded or candidates
+
+    if tincture1 := [c for c in scoped if c.subtype == "tincture1"]:
+        scoped = tincture1
+
+    primary = scoped[0]
+
+    if coded and primary.feature_type == FeatureType.charge and primary.details is None:
+        variant = next(
+            (
+                c
+                for c in candidates
+                if c not in coded
+                and c.feature_type == FeatureType.charge_treatment
+                and c.search_term()
+            ),
+            None,
+        )
+        if variant is not None:
+            primary = replace(primary, details=variant.search_term())
+
+    return primary
 
 
 def resolve_field_feature(
     candidates: list[HeraldicFeature], field_features: list[HeraldicFeature]
 ) -> HeraldicFeature | None:
     if not field_features:
-        candidates = [c for c in candidates if "field" in c.feature_type]
+        candidates = [
+            c
+            for c in candidates
+            if c.feature_type
+            in (FeatureType.field_division, FeatureType.field_treatment)
+            or (c.feature_type == FeatureType.tincture and "field" in c.codes)
+        ]
     else:
         candidates = [
             c
             for c in candidates
-            if c.feature_type in (FeatureType.field_treatment, FeatureType.tincture)
+            if c.feature_type == FeatureType.field_treatment
+            or (c.feature_type == FeatureType.tincture and c.subtype != "field")
         ]
 
     return resolve_feature(candidates)
@@ -89,7 +117,7 @@ def build_field(field_features: list[HeraldicFeature]):
             secondary_tincture = feat
 
     return HeraldicField(
-        tincture=tincture or HeraldicFeature(FeatureType.field, "unknown"),
+        tincture=tincture or HeraldicFeature(FeatureType.tincture, "unknown"),
         division=division,
         secondary_tincture=secondary_tincture,
         treatment=treatment,
@@ -170,16 +198,16 @@ class ChargeGroupBuilder:
 def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
     matches, unmatched = get_blazon_features(blazon, catalog)
 
-    field: HeraldicField | None = None
-    if "fieldless" not in blazon.lower():
-        field_features: list[HeraldicFeature] = []
-        for span, candidates in sorted(matches.items()):
-            if field_feature := resolve_field_feature(candidates, field_features):
-                field_features.append(field_feature)
-                matches.pop(span)
-            else:
-                break
-        field = build_field(field_features)
+    field_features: list[HeraldicFeature] = []
+    for span, candidates in sorted(matches.items()):
+        if field_feature := resolve_field_feature(candidates, field_features):
+            field_features.append(field_feature)
+            matches.pop(span)
+        else:
+            break
+    if not field_features:
+        field_features.extend(catalog["fieldless"])
+    field: HeraldicField = build_field(field_features)
 
     charge_features: dict[tuple[int, int], HeraldicFeature] = {
         span: resolve_feature(candidates) for span, candidates in matches.items()
