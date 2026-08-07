@@ -13,5 +13,21 @@
     "held": "holding",
     "maintained": "maintaining",
     "sustained": "sustaining"
-  }
+  },
+  "extra_term_aliases": {
+    "winged": ["winged object"],
+    "skull": ["head, human skull"]
+  },
+  "creature_subtypes": [
+    "beast",
+    "bird",
+    "fish",
+    "monster",
+    "reptile",
+    "arthropod",
+    "mollusk"
+  ],
+  "preferred_ambiguous_codes": [
+    "HEAD-HUMAN SKULL"
+  ]
 }

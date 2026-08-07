@@ -185,6 +185,8 @@ class HeraldicCharge:
     # Something else sits "on" this charge.
     charged: bool = False
     held: HeraldicFeature | None = None
+    # Other same-span matches still in play
+    charge_candidates: list[HeraldicFeature] = dataclass_field(default_factory=list)
 
     def search_terms(
         self, *, include_variants: bool = False, group_tag: str | None = None

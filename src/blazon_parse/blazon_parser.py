@@ -59,6 +59,8 @@ def get_blazon_features(
     # landed mid-word (e.g. "a" matching inside "and", "or" inside "gorged")
     for span in find_glued_matches(blazon, matches, unmatched):
         del matches[span]
+    for span in find_hyphen_compound_prefixes(blazon, matches):
+        del matches[span]
     unmatched = _compute_unmatched(blazon, matches)
 
     return matches, unmatched
@@ -79,10 +81,34 @@ def find_glued_matches(
     )
 
 
-def resolve_feature(candidates: list[HeraldicFeature]) -> HeraldicFeature | None:
-    """Pick the candidate feature for a matched span, folding in a same-span variant tag."""
+def find_hyphen_compound_prefixes(
+    blazon: str, matches: dict[tuple[int, int], list[HeraldicFeature]]
+) -> list[tuple[int, int]]:
+    """Charge matches shadowed by hyphenated compound adjectives ("bat-winged", "bull-headed")."""
+    shadowed = []
+    for pos, char in enumerate(blazon):
+        if char != "-":
+            continue
+        prefix_span = next((s for s in matches if s[1] == pos), None)
+        if prefix_span is None:
+            continue
+        if not any(f.feature_type == FeatureType.charge for f in matches[prefix_span]):
+            continue
+        suffix_end = pos + 1
+        while suffix_end < len(blazon) and blazon[suffix_end].isalpha():
+            suffix_end += 1
+        suffix_text = blazon[pos + 1 : suffix_end].lower()
+        if suffix_text.endswith(("ed", "ing")):
+            shadowed.append(prefix_span)
+    return shadowed
+
+
+def resolve_feature_candidates(
+    candidates: list[HeraldicFeature],
+) -> list[HeraldicFeature]:
+    """Same-span candidates worth keeping, folding in variant tags."""
     if not candidates:
-        return None
+        return []
 
     coded = [c for c in candidates if c.codes.get(c.subtype)]
     scoped = coded or candidates
@@ -104,9 +130,15 @@ def resolve_feature(candidates: list[HeraldicFeature]) -> HeraldicFeature | None
             None,
         )
         if variant is not None:
-            primary = replace(primary, details=variant.search_term())
+            scoped = [replace(primary, details=variant.search_term()), *scoped[1:]]
 
-    return primary
+    return scoped
+
+
+def resolve_feature(candidates: list[HeraldicFeature]) -> HeraldicFeature | None:
+    """Pick the best candidate - for callers without deferred resolution."""
+    scoped = resolve_feature_candidates(candidates)
+    return scoped[0] if scoped else None
 
 
 def resolve_field_feature(
@@ -242,11 +274,12 @@ class ChargeGroupBuilder:
         self.pending_held = feat
 
     def add_charge(
-        self, charge_feat: HeraldicFeature, count: HeraldicFeature | None
+        self, charge_feats: list[HeraldicFeature], count: HeraldicFeature | None
     ) -> None:
         # A charge that already got its primary tincture is done collecting.
         # Starting a new charge closes that window.
         self.unspecified = [c for c in self.unspecified if c.tincture is None]
+        charge_feat = charge_feats[0]
         charged = self.tertiary_after_next
         held = self.pending_held
         self.pending_held = None
@@ -257,7 +290,11 @@ class ChargeGroupBuilder:
         if group_name == "primary" and charge_feat.subtype == "peripheral":
             group_name = "peripheral"
         charge = HeraldicCharge(
-            charge=charge_feat, count=count, charged=charged, held=held
+            charge=charge_feat,
+            charge_candidates=charge_feats if len(charge_feats) > 1 else [],
+            count=count,
+            charged=charged,
+            held=held,
         )
         getattr(self, group_name).charges.append(charge)
         self.last_group = group_name
@@ -315,6 +352,57 @@ class ChargeGroupBuilder:
         )
 
 
+def _narrow_by_host_subtype(
+    candidates: list[HeraldicFeature],
+    host: HeraldicFeature,
+    creature_subtypes: list[str],
+) -> HeraldicFeature | None:
+    """Pick the candidate depending on whether `host` is a creature or not"""
+    host_is_creature = host.subtype in creature_subtypes
+    matching = [c for c in candidates if bool(c.subtype) == host_is_creature]
+    return matching[0] if len(matching) == 1 else None
+
+
+def _narrow_by_preference(
+    candidates: list[HeraldicFeature], preferred_codes: list[str]
+) -> HeraldicFeature | None:
+    """Pick the candidate with a hand-curated default list."""
+    preferred = [c for c in candidates if c.code in preferred_codes]
+    return preferred[0] if len(preferred) == 1 else None
+
+
+def resolve_ambiguous_charges(
+    groups: list[HeraldicChargeGroup],
+    creature_subtypes: list[str],
+    preferred_codes: list[str],
+) -> None:
+    """Narrow same-span charge candidates - first by the charge next to
+    them in the same group, then by a hand-curated default."""
+    for group in groups:
+        charges = group.charges
+        for i, charge in enumerate(charges):
+            if not charge.charge_candidates:
+                continue
+            for host_idx in (i + 1, i - 1):
+                if not (0 <= host_idx < len(charges)):
+                    continue
+                best = _narrow_by_host_subtype(
+                    charge.charge_candidates,
+                    charges[host_idx].charge,
+                    creature_subtypes,
+                )
+                if best is not None:
+                    charge.charge = best
+                    charge.charge_candidates = []
+                    break
+            else:
+                if best := _narrow_by_preference(
+                    charge.charge_candidates, preferred_codes
+                ):
+                    charge.charge = best
+                    charge.charge_candidates = []
+
+
 def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
     matches, unmatched = get_blazon_features(blazon, catalog)
 
@@ -337,12 +425,15 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
         field_features.extend(catalog["fieldless"])
     field: HeraldicField = build_field(field_features)
 
-    charge_features: dict[tuple[int, int], HeraldicFeature] = {
-        span: resolve_feature(candidates) for span, candidates in matches.items()
+    charge_features: dict[tuple[int, int], list[HeraldicFeature]] = {
+        span: resolve_feature_candidates(candidates)
+        for span, candidates in matches.items()
     }
     charge_features.update(
         {
-            span: HeraldicFeature(FeatureType.relation, subtype="unknown", details=term)
+            span: [
+                HeraldicFeature(FeatureType.relation, subtype="unknown", details=term)
+            ]
             for span, term in unmatched.items()
         }
     )
@@ -351,7 +442,8 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
     pending_count: HeraldicFeature | None = None
     unknown_terms: list[str] = []
 
-    for span, feat in sorted(charge_features.items()):
+    for span, feat_list in sorted(charge_features.items()):
+        feat = feat_list[0]
         if feat.feature_type == FeatureType.relation:
             if feat.details == "on":
                 charge_group_builder.mark_tertiary_after_next()
@@ -373,7 +465,7 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
             continue
 
         if feat.feature_type == FeatureType.charge:
-            charge_group_builder.add_charge(feat, pending_count)
+            charge_group_builder.add_charge(feat_list, pending_count)
             pending_count = None
             continue
 
@@ -385,6 +477,15 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
 
     primary, secondary, tertiary, peripheral, peripheral_tertiary = (
         charge_group_builder.build()
+    )
+    resolve_ambiguous_charges(
+        [
+            g
+            for g in (primary, secondary, tertiary, peripheral, peripheral_tertiary)
+            if g
+        ],
+        catalog.creature_subtypes,
+        catalog.preferred_ambiguous_codes,
     )
     return HeraldicBlazon(
         field=field,
@@ -421,6 +522,7 @@ def grouped_search_terms(
     (e.g. "chicken" -> BIRD) gets an extra variant tag.
     """
     groups = []
+    ambiguous_terms: list[str] = []
     if blazon.field:
         groups.append(TermGroup("Field", blazon.field.search_terms()))
     for label, charge_group, group_tag in (
@@ -441,9 +543,21 @@ def grouped_search_terms(
                     ),
                 )
             )
+            # Couldn't narrow to one candidate
+            for alt in charge.charge_candidates:
+                if alt is charge.charge:
+                    continue
+                alt_charge = replace(charge, charge=alt, charge_candidates=[])
+                ambiguous_terms.extend(
+                    alt_charge.search_terms(
+                        include_variants=include_variants, group_tag=group_tag
+                    )
+                )
     if len(groups) == 1 and groups[0].label == "Field":
         groups.append(TermGroup("Uncharged", ["FO"]))
     groups = [g for g in groups if g.terms]
+    if ambiguous_terms:
+        groups.append(TermGroup("Ambiguous terms", ambiguous_terms, active=False))
     if blazon.unknown_terms:
         groups.append(TermGroup("Unknown terms", blazon.unknown_terms, active=False))
     return groups

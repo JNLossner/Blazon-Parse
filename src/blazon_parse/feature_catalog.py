@@ -178,6 +178,8 @@ class FeatureCatalog:
     term_index: dict[str, list[int]]
     category_index: dict[str, int] = dataclass_field(default_factory=dict)
     seme_fallback_code: str = ""
+    creature_subtypes: list[str] = dataclass_field(default_factory=list)
+    preferred_ambiguous_codes: list[str] = dataclass_field(default_factory=list)
 
     def __getitem__(self, term: str) -> list[HeraldicFeature]:
         return [self.features[i] for i in self.term_index.get(term, [])]
@@ -228,6 +230,16 @@ def _add_peripheral_subtype(
         feat = features[idx]
         feat.codes["peripheral"] = feat.code
         feat.subtype = "peripheral"
+
+
+def _add_extra_term_aliases(
+    category_index: dict[str, int], term_index: dict[str, list[int]]
+) -> None:
+    """Link a bare term to additional category names it should also match"""
+    for term, categories in _HERALDIC_KNOWLEDGE.get("extra_term_aliases", {}).items():
+        for category in categories:
+            if (idx := category_index.get(category)) is not None:
+                _index_term(term_index, term, idx)
 
 
 _SEME_TREATMENT_PREFIX = "field treatment, seme, "
@@ -395,6 +407,7 @@ def parse_catalog(text: str) -> FeatureCatalog:
             if (idx := category_index.get(target)) is not None:
                 _index_term(term_index, reference.term, idx)
 
+    _add_extra_term_aliases(category_index, term_index)
     _add_plural_keys(term_index)
     _add_count_word_terms(term_index)
     _add_group_participle_terms(term_index)
@@ -410,6 +423,10 @@ def parse_catalog(text: str) -> FeatureCatalog:
         term_index=term_index,
         category_index=category_index,
         seme_fallback_code=seme_fallback_code,
+        creature_subtypes=list(_HERALDIC_KNOWLEDGE.get("creature_subtypes", [])),
+        preferred_ambiguous_codes=list(
+            _HERALDIC_KNOWLEDGE.get("preferred_ambiguous_codes", [])
+        ),
     )
 
 
@@ -432,4 +449,6 @@ def load_catalog(src: Path) -> FeatureCatalog:
         term_index=data["term_index"],
         category_index=data["category_index"],
         seme_fallback_code=data.get("seme_fallback_code", ""),
+        creature_subtypes=data.get("creature_subtypes", []),
+        preferred_ambiguous_codes=data.get("preferred_ambiguous_codes", []),
     )
