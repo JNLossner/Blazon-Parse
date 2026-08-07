@@ -11,10 +11,10 @@
       <fieldset class="fieldset border border-base-300 rounded-box p-3 mb-2">
         <legend class="fieldset-legend">{{ group.label }}</legend>
         {% for term in group.terms %}
-        <div class="flex items-center gap-2 py-1 term-row">
-          <input type="checkbox" class="checkbox checkbox-sm term-toggle" checked>
-          <input type="text" name="term" value="{{ term }}" class="input input-sm input-bordered font-mono flex-1 term-text">
-          <input type="number" name="weight" value="1" min="1" step="1" class="input input-sm input-bordered w-16 weight-input">
+        <div class="flex items-center gap-2 py-1 term-row{% if not group.active %} opacity-50{% endif %}">
+          <input type="checkbox" class="checkbox checkbox-sm term-toggle"{% if group.active %} checked{% endif %}>
+          <input type="text" name="term" value="{{ term }}" class="input input-sm input-bordered font-mono flex-1 term-text"{% if not group.active %} disabled{% endif %}>
+          <input type="number" name="weight" value="1" min="1" step="1" class="input input-sm input-bordered w-16 weight-input"{% if not group.active %} disabled{% endif %}>
         </div>
         {% endfor %}
       </fieldset>

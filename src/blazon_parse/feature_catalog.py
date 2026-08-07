@@ -316,7 +316,7 @@ def _add_count_word_terms(term_index: dict[str, list[int]]) -> None:
             continue
         prefix = match["prefix"] or ""
         word = prefix + _inflect.number_to_words(int(match["digit"]))
-        keys = [word, "a ", "an "] if term == "1" else [word]
+        keys = [word, "a", "an"] if term == "1" else [word]
         for idx in term_index[term]:
             for key in keys:
                 _index_term(term_index, key, idx)
@@ -382,7 +382,8 @@ def parse_catalog(text: str) -> FeatureCatalog:
                 merge_index[merge_key] = idx
 
         features[idx].codes[relation.feature_set] = term
-        _index_term(term_index, term, idx)
+        if not term.startswith("~"):
+            _index_term(term_index, term, idx)
 
     for reference in cross_references:
         # "X - see also Y" is a conflict-checking cross-reference, not an alias

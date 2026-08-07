@@ -253,6 +253,7 @@ class HeraldicBlazon:
     tertiary: HeraldicChargeGroup | None = None
     peripheral: HeraldicChargeGroup | None = None
     peripheral_tertiary: HeraldicChargeGroup | None = None
+    unknown_terms: list[str] = dataclass_field(default_factory=list)
 
     def search_terms(self, *, include_variants: bool = False) -> list[str]:
         terms = self.field.search_terms() if self.field else []

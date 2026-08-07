@@ -1,5 +1,8 @@
+import string
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
+
+_PUNCTUATION_TO_SPACE = str.maketrans(string.punctuation, " " * len(string.punctuation))
 
 from blazon_parse.feature_catalog import FeatureCatalog
 from blazon_parse.heraldic import (
@@ -13,15 +16,10 @@ from blazon_parse.heraldic import (
 from blazon_parse.matcher import find_catalog_matches
 
 
-def get_blazon_features(
-    blazon: str, catalog: FeatureCatalog
-) -> tuple[
-    dict[tuple[int, int], list[HeraldicFeature]],
-    dict[tuple[int, int], str],
-]:
-    matches = find_catalog_matches(blazon.lower(), catalog)
-
-    cleaned_blazon = blazon.replace(",", " ").replace(".", " ")
+def _compute_unmatched(
+    blazon: str, matches: dict[tuple[int, int], list[HeraldicFeature]]
+) -> dict[tuple[int, int], str]:
+    cleaned_blazon = blazon.translate(_PUNCTUATION_TO_SPACE)
     unmatched = [i for i, c in enumerate(cleaned_blazon) if c != " "]
     for start, end in matches:
         for i in range(start, end):
@@ -45,7 +43,40 @@ def get_blazon_features(
         span = (group[0], group[-1] + 1)
         unmatched_features[span] = blazon[span[0] : span[-1]]
 
-    return matches, unmatched_features
+    return unmatched_features
+
+
+def get_blazon_features(
+    blazon: str, catalog: FeatureCatalog
+) -> tuple[
+    dict[tuple[int, int], list[HeraldicFeature]],
+    dict[tuple[int, int], str],
+]:
+    matches = find_catalog_matches(blazon.lower(), catalog)
+    unmatched = _compute_unmatched(blazon, matches)
+
+    # A match glued to unmatched text with no separating space almost always
+    # landed mid-word (e.g. "a" matching inside "and", "or" inside "gorged")
+    for span in find_glued_matches(blazon, matches, unmatched):
+        del matches[span]
+    unmatched = _compute_unmatched(blazon, matches)
+
+    return matches, unmatched
+
+
+def find_glued_matches(
+    blazon: str,
+    matches: dict[tuple[int, int], list[HeraldicFeature]],
+    unmatched: dict[tuple[int, int], str],
+) -> list[tuple[int, int]]:
+    """Match spans directly touching unmatched text."""
+    unmatched_starts = {start for start, _ in unmatched}
+    unmatched_ends = {end for _, end in unmatched}
+    return sorted(
+        span
+        for span in matches
+        if (span[0] in unmatched_ends) or (span[1] in unmatched_starts)
+    )
 
 
 def resolve_feature(candidates: list[HeraldicFeature]) -> HeraldicFeature | None:
@@ -318,13 +349,16 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
 
     charge_group_builder = ChargeGroupBuilder()
     pending_count: HeraldicFeature | None = None
+    unknown_terms: list[str] = []
 
     for span, feat in sorted(charge_features.items()):
         if feat.feature_type == FeatureType.relation:
             if feat.details == "on":
                 charge_group_builder.mark_tertiary_after_next()
-            if feat.details == "between":
+            elif feat.details == "between":
                 charge_group_builder.enter_secondary(feat)
+            elif feat.details:
+                unknown_terms.append(feat.details)
             continue
 
         if feat.feature_type == FeatureType.count:
@@ -359,6 +393,7 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
         tertiary=tertiary,
         peripheral=peripheral,
         peripheral_tertiary=peripheral_tertiary,
+        unknown_terms=unknown_terms,
     )
 
 
@@ -374,6 +409,7 @@ def parse_blazon(
 class TermGroup:
     label: str
     terms: list[str]
+    active: bool = True
 
 
 def grouped_search_terms(
@@ -407,4 +443,7 @@ def grouped_search_terms(
             )
     if len(groups) == 1 and groups[0].label == "Field":
         groups.append(TermGroup("Uncharged", ["FO"]))
-    return [g for g in groups if g.terms]
+    groups = [g for g in groups if g.terms]
+    if blazon.unknown_terms:
+        groups.append(TermGroup("Unknown terms", blazon.unknown_terms, active=False))
+    return groups
