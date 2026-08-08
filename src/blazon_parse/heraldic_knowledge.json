@@ -16,7 +16,15 @@
   },
   "extra_term_aliases": {
     "winged": ["winged object"],
-    "skull": ["head, human skull"]
+    "skull": ["head, human skull"],
+    "goutte de sang": ["goute"],
+    "goutte d'eau": ["goute"],
+    "goutte de larmes": ["goute"],
+    "goutte d'or": ["goute"],
+    "goutte de vin": ["goute"],
+    "goutte de poix": ["goute"],
+    "goutte de huix": ["goute"],
+    "goutte d'olive": ["goute"]
   },
   "creature_subtypes": [
     "beast",
@@ -29,5 +37,25 @@
   ],
   "preferred_ambiguous_codes": [
     "HEAD-HUMAN SKULL"
-  ]
+  ],
+  "implied_features": {
+    "bezant": "or",
+    "plate": "argent",
+    "torteau": "gules",
+    "hurt": "azure",
+    "pellet": "sable",
+    "ogress": "sable",
+    "gunstone": "sable",
+    "pomme": "vert",
+    "golpe": "purpure",
+    "fountain": "multicolor neutral:~ argent:~and azure",
+    "goutte de sang": "gules",
+    "goutte d'eau": "argent",
+    "goutte de larmes": "azure",
+    "goutte d'or": "or",
+    "goutte de vin": "purpure",
+    "goutte de poix": "sable",
+    "goutte de huix": "vert",
+    "goutte d'olive": "vert"
+  }
 }

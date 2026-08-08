@@ -148,7 +148,9 @@ class Category:
             ),
             category=category,
             terms=[]
-            if not term or term.startswith("not") or term == "other"
+            if not term
+            or term.startswith("not")
+            or term in ("other", "whole", "throughout")
             else [term],
             kind=kind,
         )
