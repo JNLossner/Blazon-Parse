@@ -51,19 +51,23 @@ def get_blazon_features(
 ) -> tuple[
     dict[tuple[int, int], list[HeraldicFeature]],
     dict[tuple[int, int], str],
+    list[tuple[int, int]],
 ]:
     matches = find_catalog_matches(blazon.lower(), catalog)
     unmatched = _compute_unmatched(blazon, matches)
 
     # A match glued to unmatched text with no separating space almost always
-    # landed mid-word (e.g. "a" matching inside "and", "or" inside "gorged")
-    for span in find_glued_matches(blazon, matches, unmatched):
+    # landed mid-word (e.g. "a" matching inside "and", "or" inside "gorged").
+    glued_spans = find_glued_matches(blazon, matches, unmatched)
+    for span in glued_spans:
         del matches[span]
-    for span in find_hyphen_compound_prefixes(blazon, matches):
+    hyphen_spans = find_hyphen_compound_prefixes(blazon, matches)
+    for span in hyphen_spans:
         del matches[span]
+    glued_spans += hyphen_spans
     unmatched = _compute_unmatched(blazon, matches)
 
-    return matches, unmatched
+    return matches, unmatched, sorted(glued_spans)
 
 
 def find_glued_matches(
@@ -404,7 +408,7 @@ def resolve_ambiguous_charges(
 
 
 def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
-    matches, unmatched = get_blazon_features(blazon, catalog)
+    matches, unmatched, glued_spans = get_blazon_features(blazon, catalog)
 
     field_features: list[HeraldicFeature] = []
     spans = sorted(matches)
@@ -495,6 +499,8 @@ def build_blazon(blazon: str, catalog: FeatureCatalog) -> HeraldicBlazon:
         peripheral=peripheral,
         peripheral_tertiary=peripheral_tertiary,
         unknown_terms=unknown_terms,
+        unknown_spans=sorted(unmatched),
+        glued_spans=glued_spans,
     )
 
 

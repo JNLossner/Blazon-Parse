@@ -9,6 +9,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
 
 from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
 from blazon_parse.catalog import ensure_catalog
@@ -45,6 +46,51 @@ def _catalog_stats() -> dict:
     }
 
 
+_HIGHLIGHT_CLASS = {"unknown": "text-error", "glued": "text-warning"}
+
+
+def _subtract_spans(
+    spans: list[tuple[int, int]], cuts: list[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """`spans` with any overlapping `cuts` ranges carved out."""
+    result = []
+    for start, end in spans:
+        cursor = start
+        for cut_start, cut_end in cuts:
+            if cut_end <= cursor or cut_start >= end:
+                continue
+            if cut_start > cursor:
+                result.append((cursor, cut_start))
+            cursor = max(cursor, cut_end)
+        if cursor < end:
+            result.append((cursor, end))
+    return result
+
+
+def _highlight_spans(
+    text: str, unknown_spans: list[tuple[int, int]], glued_spans: list[tuple[int, int]]
+) -> Markup:
+    """`text` with `unknown_spans` (never matched) in red and `glued_spans`
+    (matched, but discarded as a likely false positive) in yellow."""
+    red_spans = _subtract_spans(unknown_spans, glued_spans)
+    segments = sorted(
+        [(start, end, "unknown") for start, end in red_spans]
+        + [(start, end, "glued") for start, end in glued_spans]
+    )
+    html: list[str] = []
+    cursor = 0
+    for start, end, kind in segments:
+        html.append(str(escape(text[cursor:start])))
+        html.append(
+            f'<mark class="{_HIGHLIGHT_CLASS[kind]} bg-transparent font-semibold">'
+        )
+        html.append(str(escape(text[start:end])))
+        html.append("</mark>")
+        cursor = end
+    html.append(str(escape(text[cursor:])))
+    return Markup("".join(html))
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "index.html", {})
@@ -53,8 +99,19 @@ def index(request: Request) -> HTMLResponse:
 @app.post("/parse", response_class=HTMLResponse)
 def parse(request: Request, blazon: Annotated[str, Form()]) -> HTMLResponse:
     blazon_struct = build_blazon(blazon, catalog)
-    groups = grouped_search_terms(blazon_struct)
-    return templates.TemplateResponse(request, "_breakdown.html", {"groups": groups})
+    groups = [
+        g for g in grouped_search_terms(blazon_struct) if g.label != "Unknown terms"
+    ]
+    highlighted_blazon = (
+        _highlight_spans(blazon, blazon_struct.unknown_spans, blazon_struct.glued_spans)
+        if blazon_struct.unknown_spans or blazon_struct.glued_spans
+        else None
+    )
+    return templates.TemplateResponse(
+        request,
+        "_breakdown.html",
+        {"groups": groups, "highlighted_blazon": highlighted_blazon},
+    )
 
 
 def _paired_weights(term: list[str], weight: list[int] | None) -> list[int]:

@@ -1,3 +1,16 @@
+{% if highlighted_blazon %}
+<div class="card bg-base-100 shadow-sm mb-2">
+  <div class="card-body py-3">
+    <p class="text-xs uppercase opacity-60 mb-1">Unparsed text</p>
+    <p class="font-mono text-sm whitespace-pre-wrap">{{ highlighted_blazon }}</p>
+    <p class="text-xs opacity-60 mt-1">
+      <span class="text-error font-semibold">red</span> = unrecognized text &middot;
+      <span class="text-warning font-semibold">yellow</span> = matched but discarded as a likely false positive
+    </p>
+  </div>
+</div>
+{% endif %}
+
 <div class="card bg-base-100 shadow-sm">
   <div class="card-body">
     <h2 class="card-title">Search terms</h2>
