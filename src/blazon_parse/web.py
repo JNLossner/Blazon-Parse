@@ -13,7 +13,15 @@ from markupsafe import Markup, escape
 
 from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
 from blazon_parse.catalog import ensure_catalog
-from blazon_parse.search_url import MAX_TERMS, build_search_url, search_oanda
+from blazon_parse.search_url import (
+    DEFAULT_MATCH_TYPE,
+    KINGDOM_CODES,
+    MAX_TERMS,
+    build_search_url,
+    search_oanda,
+)
+
+KINGDOMS = sorted(KINGDOM_CODES.items(), key=lambda code_name: code_name[1])
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
@@ -110,7 +118,11 @@ def parse(request: Request, blazon: Annotated[str, Form()]) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "_breakdown.html",
-        {"groups": groups, "highlighted_blazon": highlighted_blazon},
+        {
+            "groups": groups,
+            "highlighted_blazon": highlighted_blazon,
+            "kingdoms": KINGDOMS,
+        },
     )
 
 
@@ -120,11 +132,21 @@ def _paired_weights(term: list[str], weight: list[int] | None) -> list[int]:
     return [max(1, weight[i]) if i < len(weight) else 1 for i in range(len(term))]
 
 
+def _paired_match_types(term: list[str], match_type: list[str] | None) -> list[str]:
+    """Match types aligned to `term`, defaulting missing/blank entries to armory description."""
+    match_type = match_type or []
+    return [
+        match_type[i] if i < len(match_type) and match_type[i] else DEFAULT_MATCH_TYPE
+        for i in range(len(term))
+    ]
+
+
 @app.post("/search/link", response_class=HTMLResponse)
 def search_link(
     request: Request,
     term: Annotated[list[str] | None, Form()] = None,
     weight: Annotated[list[int] | None, Form()] = None,
+    match_type: Annotated[list[str] | None, Form()] = None,
     limit: Annotated[int, Form()] = 500,
 ) -> HTMLResponse:
     term = term or []
@@ -133,7 +155,10 @@ def search_link(
             request, "_search_error.html", {"count": len(term)}
         )
     url = build_search_url(
-        term, weights=_paired_weights(term, weight), limit=max(1, limit)
+        term,
+        weights=_paired_weights(term, weight),
+        match_types=_paired_match_types(term, match_type),
+        limit=max(1, limit),
     )
     return templates.TemplateResponse(request, "_search_link.html", {"url": url})
 
@@ -143,6 +168,7 @@ def search_run(
     request: Request,
     term: Annotated[list[str] | None, Form()] = None,
     weight: Annotated[list[int] | None, Form()] = None,
+    match_type: Annotated[list[str] | None, Form()] = None,
     limit: Annotated[int, Form()] = 500,
 ) -> HTMLResponse:
     term = term or []
@@ -151,7 +177,10 @@ def search_run(
             request, "_search_error.html", {"count": len(term)}
         )
     results = search_oanda(
-        term, weights=_paired_weights(term, weight), limit=max(1, limit)
+        term,
+        weights=_paired_weights(term, weight),
+        match_types=_paired_match_types(term, match_type),
+        limit=max(1, limit),
     )
     groups = [
         (score, list(items)) for score, items in groupby(results, key=lambda r: r.score)

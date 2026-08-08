@@ -27,6 +27,7 @@
         <div class="flex items-center gap-2 py-1 term-row{% if not group.active %} opacity-50{% endif %}">
           <input type="checkbox" class="checkbox checkbox-sm term-toggle"{% if group.active %} checked{% endif %}>
           <input type="text" name="term" value="{{ term }}" class="input input-sm input-bordered font-mono flex-1 term-text"{% if not group.active %} disabled{% endif %}>
+          <input type="hidden" name="match_type" value="armory description" class="match-type-hidden"{% if not group.active %} disabled{% endif %}>
           <input type="number" name="weight" value="1" min="1" step="1" class="input input-sm input-bordered w-16 weight-input"{% if not group.active %} disabled{% endif %}>
         </div>
         {% endfor %}
@@ -47,10 +48,10 @@
       <p class="text-sm mt-2"><span id="term-count">0</span>/10 selected</p>
 
       <div class="flex gap-2 mt-2">
-        <button type="button" class="btn btn-primary" hx-post="/search/run" hx-include="#term-form" hx-target="#search-result">
+        <button type="button" class="btn btn-primary search-action-btn" hx-post="/search/run" hx-include="#term-form" hx-target="#search-result">
           Search Here
         </button>
-        <button type="button" class="btn btn-outline" hx-post="/search/link" hx-include="#term-form" hx-target="#search-result">
+        <button type="button" class="btn btn-outline search-action-btn" hx-post="/search/link" hx-include="#term-form" hx-target="#search-result">
           Get O&amp;A Link
         </button>
       </div>
@@ -60,23 +61,109 @@
 
 <script>
   (function () {
+    var KINGDOM_OPTIONS = {{ kingdoms | tojson }};
+
+    function kingdomOptionsHtml() {
+      return KINGDOM_OPTIONS.map(function (code_name) {
+        return '<option value="' + code_name[0] + '">' + code_name[1] + '</option>';
+      }).join('');
+    }
+
+    // monthSelect's dateFormat "Ym" both displays and parses as "YYYYMM"
+    // directly - matches the O&A "date and kingdom" term format with no
+    // manual conversion, and (with allowInput) still accepts typing digits.
+    function initMonthPicker(input, row) {
+      flatpickr(input, {
+        plugins: [new monthSelectPlugin({ shorthand: true, dateFormat: "Ym" })],
+        allowInput: true,
+        onChange: function () { syncDateKingdom(row); },
+        onClose: function () { syncDateKingdom(row); },
+      });
+    }
+
     function termRow(checked) {
       var row = document.createElement("div");
       row.className = "flex items-center gap-2 py-1 term-row";
       row.innerHTML =
         '<input type="checkbox" class="checkbox checkbox-sm term-toggle"' + (checked ? " checked" : "") + '>' +
-        '<input type="text" name="term" value="" placeholder="e.g. AR" class="input input-sm input-bordered font-mono flex-1 term-text">' +
+        '<select class="select select-sm select-bordered match-type-select">' +
+          '<option value="armory description">Armory description</option>' +
+          '<option value="blazon pattern">Blazon pattern</option>' +
+          '<option value="date and kingdom">Date &amp; kingdom</option>' +
+        '</select>' +
+        '<div class="flex-1 flex items-center gap-1">' +
+          '<input type="text" name="term" value="" placeholder="e.g. AR" class="input input-sm input-bordered font-mono flex-1 term-text">' +
+          '<div class="date-range hidden flex flex-col gap-1">' +
+            '<input type="text" class="input input-sm input-bordered font-mono w-32 date-from" placeholder="YYYYMM">' +
+            '<input type="text" class="input input-sm input-bordered font-mono w-32 date-to" placeholder="YYYYMM">' +
+            '<p class="date-range-error text-error text-xs hidden">Enter both From and To (YYYYMM)</p>' +
+          '</div>' +
+          '<select class="select select-sm select-bordered kingdom-select hidden" multiple size="4">' + kingdomOptionsHtml() + '</select>' +
+        '</div>' +
+        '<input type="hidden" name="match_type" value="armory description" class="match-type-hidden">' +
         '<input type="number" name="weight" value="1" min="1" step="1" class="input input-sm input-bordered w-16 weight-input">' +
         '<button type="button" class="btn btn-sm btn-ghost remove-term-btn">✕</button>';
+      initMonthPicker(row.querySelector(".date-from"), row);
+      initMonthPicker(row.querySelector(".date-to"), row);
       return row;
     }
 
     function setRowEnabled(row, enabled) {
-      var text = row.querySelector(".term-text");
-      var weight = row.querySelector(".weight-input");
-      text.disabled = !enabled;
-      weight.disabled = !enabled;
+      row.querySelectorAll("input:not(.term-toggle), select").forEach(function (el) {
+        el.disabled = !enabled;
+      });
       row.classList.toggle("opacity-50", !enabled);
+    }
+
+    function isValidYYYYMM(value) {
+      return /^\d{6}$/.test(value);
+    }
+
+    // A row only "silently" drops its date term if exactly one side is
+    // filled in, or a typed value doesn't parse - both fields blank just
+    // means the row hasn't been used yet, which isn't an error.
+    function isDateRangeIncomplete(row) {
+      var fromInput = row.querySelector(".date-from");
+      var toInput = row.querySelector(".date-to");
+      if (!fromInput || !toInput) return false;
+      var bothEmpty = !fromInput.value && !toInput.value;
+      var bothValid = isValidYYYYMM(fromInput.value) && isValidYYYYMM(toInput.value);
+      return !bothEmpty && !bothValid;
+    }
+
+    function syncDateKingdom(row) {
+      var fromInput = row.querySelector(".date-from");
+      var toInput = row.querySelector(".date-to");
+      var incomplete = isDateRangeIncomplete(row);
+      fromInput.classList.toggle("input-error", incomplete && !isValidYYYYMM(fromInput.value));
+      toInput.classList.toggle("input-error", incomplete && !isValidYYYYMM(toInput.value));
+      var errorMsg = row.querySelector(".date-range-error");
+      if (errorMsg) errorMsg.classList.toggle("hidden", !incomplete);
+
+      var kingdomSelect = row.querySelector(".kingdom-select");
+      var kingdoms = kingdomSelect
+        ? Array.prototype.map.call(kingdomSelect.selectedOptions, function (o) { return o.value; }).join("")
+        : "";
+      var value =
+        isValidYYYYMM(fromInput.value) && isValidYYYYMM(toInput.value)
+          ? fromInput.value + " " + toInput.value
+          : "";
+      if (value && kingdoms) value += " " + kingdoms;
+      row.querySelector(".term-text").value = value;
+    }
+
+    function applyMatchType(row, type) {
+      row.querySelector(".match-type-hidden").value = type;
+      var textInput = row.querySelector(".term-text");
+      var isDateKingdom = type === "date and kingdom";
+      textInput.classList.toggle("hidden", isDateKingdom);
+      row.querySelectorAll(".date-range, .kingdom-select").forEach(function (el) {
+        el.classList.toggle("hidden", !isDateKingdom);
+      });
+      textInput.placeholder = type === "blazon pattern" ? "e.g. perched" : "e.g. AR";
+      if (isDateKingdom) {
+        syncDateKingdom(row);
+      }
     }
 
     function updateTermCount() {
@@ -90,17 +177,35 @@
       input.value = isNaN(value) || value < 1 ? 1 : value;
     }
 
+    // Blocks the O&A request entirely when an active row's date range is
+    // half-filled or unparseable, instead of the term just silently
+    // dropping out of the search with no indication why.
+    function findIncompleteDateRow() {
+      var bad = null;
+      document.querySelectorAll(".term-row").forEach(function (row) {
+        if (bad) return;
+        var toggle = row.querySelector(".term-toggle");
+        if (toggle && toggle.checked && isDateRangeIncomplete(row)) bad = row;
+      });
+      return bad;
+    }
+
     if (!window.__blazonTermListenerBound) {
       document.body.addEventListener("change", function (e) {
-        if (e.target.classList && e.target.classList.contains("term-toggle")) {
-          setRowEnabled(e.target.closest(".term-row"), e.target.checked);
+        var target = e.target;
+        if (!target.classList) return;
+        if (target.classList.contains("term-toggle")) {
+          setRowEnabled(target.closest(".term-row"), target.checked);
           updateTermCount();
         }
-        if (
-          (e.target.classList && e.target.classList.contains("weight-input")) ||
-          e.target.id === "limit-input"
-        ) {
-          clampWeight(e.target);
+        if (target.classList.contains("weight-input") || target.id === "limit-input") {
+          clampWeight(target);
+        }
+        if (target.classList.contains("match-type-select")) {
+          applyMatchType(target.closest(".term-row"), target.value);
+        }
+        if (target.classList.contains("kingdom-select")) {
+          syncDateKingdom(target.closest(".term-row"));
         }
       });
       document.body.addEventListener("click", function (e) {
@@ -112,6 +217,15 @@
           e.target.closest(".term-row").remove();
           updateTermCount();
         }
+      });
+      document.body.addEventListener("htmx:confirm", function (e) {
+        var el = (e.detail && e.detail.elt) || e.target;
+        if (!el || !el.classList || !el.classList.contains("search-action-btn")) return;
+        var badRow = findIncompleteDateRow();
+        if (!badRow) return;
+        e.preventDefault();
+        syncDateKingdom(badRow);
+        badRow.scrollIntoView({ behavior: "smooth", block: "center" });
       });
       window.__blazonTermListenerBound = true;
     }
