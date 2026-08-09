@@ -1,6 +1,7 @@
 import re
 
 _LOCATIVES = {"on", "between", "within"}
+_FRONTED_ONLY = {"on"}
 _PREPOSITIONS = {
     "of",
     "with",
@@ -44,7 +45,9 @@ def match_phrase(words: list[str], i: int, phrases: list[str]) -> int | None:
     return None
 
 
-def match_relation(words: list[str], i: int) -> tuple[int, str] | None:
+def match_relation(
+    words: list[str], i: int, *, at_start: bool = False
+) -> tuple[int, str] | None:
     if i >= len(words):
         return None
     word = words[i]
@@ -53,9 +56,13 @@ def match_relation(words: list[str], i: int) -> tuple[int, str] | None:
     next_word = words[i + 1] if i + 1 < len(words) else None
     if word.endswith("ed") and next_word in _PREPOSITIONS:
         return 2, f"{word} {next_word}"
-    if word.endswith("ing"):
+    if not at_start and word.endswith("ing"):
         return 1, word
     return None
+
+
+def is_fronted_only(keyword: str) -> bool:
+    return keyword in _FRONTED_ONLY
 
 
 def match_quantity(words: list[str], i: int) -> int | None:

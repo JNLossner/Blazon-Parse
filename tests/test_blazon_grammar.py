@@ -103,6 +103,22 @@ def test_fieldless_comma_prefix() -> None:
     ]
 
 
+def test_and_within_continues_the_current_host() -> None:
+    """Real pattern from the SCA armorial ('...tailed and within a bordure
+    ...', '...fructed and within an orle...') - unlike 'on', 'within' is
+    trailing-only in every 'and within' occurrence checked, so it should
+    continue the current charge's relations rather than start a fresh one."""
+    tree = parse("Argent, a seagoat tailed and within a bordure vert.")
+    seagoat = tree.charge_groups[0][0]
+    assert seagoat.content == "seagoat tailed"
+    assert seagoat.relations == [
+        Relation(
+            keyword="within",
+            charges=[ChargeNode(count="a", content="bordure", tinctures=["vert"])],
+        )
+    ]
+
+
 @pytest.mark.parametrize(
     "blazon,expected_content",
     [
@@ -122,14 +138,6 @@ def test_ing_shaped_charge_names_are_not_mistaken_for_relations(
     assert charge.relations == []
 
 
-@pytest.mark.xfail(
-    reason="'and on X Y' after an already-parsed charge misattaches - 'on' "
-    "is fronted-style (always re-states its own host) but the and-continuation "
-    "check treats it the same as trailing-only relations like 'maintaining', "
-    "so it wrongly attaches 'on a chief' to the catamount instead of starting "
-    "a fresh sibling charge (chief-with-mullets-on-it)",
-    strict=True,
-)
 def test_and_on_after_a_charge_starts_a_fresh_sibling() -> None:
     tree = parse(
         "Argent semy-de-lys azure, a catamount queue-fourchy passant "
@@ -149,15 +157,6 @@ def test_and_on_after_a_charge_starts_a_fresh_sibling() -> None:
     ]
 
 
-@pytest.mark.xfail(
-    reason="'gorged of X and maintaining Y' - the second relation should "
-    "attach back to the outer host (dolphins), but 'comital coronets' (the "
-    "last charge inside 'gorged of's own nested group) grabs it first via "
-    "its own trailing parse_relations call before control returns to the "
-    "dolphins charge - a call-stack precedence issue. Also covers the "
-    "separate 'between them' pronoun not being recognized.",
-    strict=True,
-)
 def test_and_chained_relation_attaches_to_the_outer_host() -> None:
     tree = parse(
         "(Fieldless) Two dolphins haurient respectant azure gorged of comital "
@@ -165,5 +164,9 @@ def test_and_chained_relation_attaches_to_the_outer_host() -> None:
     )
     dolphins = tree.charge_groups[0][0]
     assert [r.keyword for r in dolphins.relations] == ["gorged of", "maintaining"]
+    gorged_of = next(r for r in dolphins.relations if r.keyword == "gorged of")
+    assert gorged_of.charges == [ChargeNode(content="comital coronets")]
     maintaining = next(r for r in dolphins.relations if r.keyword == "maintaining")
-    assert maintaining.charges[0].content == "rose"
+    assert maintaining.charges == [
+        ChargeNode(content="between them a rose", tinctures=["or"])
+    ]
