@@ -14,3 +14,7 @@ data/
 
 # Local config overrides
 .env
+
+# Ignore todo lists and notes
+*.md
+!README.md
