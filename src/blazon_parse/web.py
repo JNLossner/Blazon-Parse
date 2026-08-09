@@ -14,6 +14,7 @@ from markupsafe import Markup, escape
 
 from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
 from blazon_parse.catalog import ensure_catalog
+from blazon_parse.config import WEB_HOST, WEB_PORT
 from blazon_parse.feature_catalog import FeatureCatalog
 from blazon_parse.search_url import (
     DEFAULT_MATCH_TYPE,
@@ -29,9 +30,6 @@ BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent.parent
 CATALOG_PATH = PROJECT_ROOT / "data" / "my.cat"
 PARSED_CATALOG_PATH = PROJECT_ROOT / "data" / "my_catalog.json"
-
-HOST = "127.0.0.1"
-PORT = 8000
 
 app = FastAPI(title="Blazon Parse")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
@@ -278,8 +276,8 @@ def update_catalog_route(request: Request) -> HTMLResponse:
 
 
 def run() -> None:
-    webbrowser.open(f"http://{HOST}:{PORT}")
-    uvicorn.run(app, host=HOST, port=PORT)
+    webbrowser.open(f"http://{WEB_HOST}:{WEB_PORT}")
+    uvicorn.run(app, host=WEB_HOST, port=WEB_PORT)
 
 
 if __name__ == "__main__":

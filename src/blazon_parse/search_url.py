@@ -7,8 +7,8 @@ from urllib.parse import urlencode
 import requests
 
 from blazon_parse.catalog import USER_AGENT
+from blazon_parse.config import OANDA_SEARCH_URL
 
-OANDA_SEARCH_URL = "https://oanda.sca.org//oanda_complex.cgi"
 MAX_TERMS = 10
 DEFAULT_MATCH_TYPE = "armory description"
 MATCH_TYPES = (DEFAULT_MATCH_TYPE, "blazon pattern", "date and kingdom")
