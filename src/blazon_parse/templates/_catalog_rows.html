@@ -1,0 +1,49 @@
+{% set term_cap = 8 %}
+<caption class="text-left text-xs opacity-60 pb-2">{{ rows|length }} of {{ total }} entries</caption>
+<thead>
+  <tr>
+    <th>Terms</th>
+    <th>Code(s)</th>
+    <th>Type</th>
+    <th>Details</th>
+  </tr>
+</thead>
+<tbody>
+{% for row in rows %}
+<tr class="align-top">
+  <td class="max-w-md">
+    <div class="flex flex-wrap gap-1">
+      {% for term in row.terms[:term_cap] %}
+      <span class="badge badge-ghost badge-sm font-mono whitespace-nowrap">{{ term }}</span>
+      {% endfor %}
+      {% if row.terms|length > term_cap %}
+      <details class="dropdown">
+        <summary class="badge badge-outline badge-sm cursor-pointer whitespace-nowrap">+{{ row.terms|length - term_cap }} more</summary>
+        <div class="dropdown-content z-10 bg-base-100 border border-base-300 rounded-box p-2 flex flex-wrap gap-1 max-w-md shadow">
+          {% for term in row.terms[term_cap:] %}
+          <span class="badge badge-ghost badge-sm font-mono whitespace-nowrap">{{ term }}</span>
+          {% endfor %}
+        </div>
+      </details>
+      {% endif %}
+    </div>
+  </td>
+  <td class="font-mono text-sm whitespace-nowrap">
+    {% if row.codes|length > 1 %}
+      {% for scope, code in row.codes.items() %}
+      <span class="badge badge-ghost badge-sm">{{ scope }}: {{ code }}</span>
+      {% endfor %}
+    {% else %}
+      {{ (row.codes.values()|list|first) or "" }}
+    {% endif %}
+  </td>
+  <td class="whitespace-nowrap">
+    <span class="badge badge-outline badge-sm">{{ row.feature_type }}</span>
+    {% if row.subtype %}<span class="badge badge-ghost badge-sm">{{ row.subtype }}</span>{% endif %}
+  </td>
+  <td class="text-sm opacity-70">{{ row.details or "" }}</td>
+</tr>
+{% else %}
+<tr><td colspan="4" class="text-center opacity-60">No matching entries.</td></tr>
+{% endfor %}
+</tbody>

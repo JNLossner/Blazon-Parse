@@ -1,4 +1,5 @@
 import webbrowser
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import groupby
 from pathlib import Path
@@ -13,6 +14,7 @@ from markupsafe import Markup, escape
 
 from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
 from blazon_parse.catalog import ensure_catalog
+from blazon_parse.feature_catalog import FeatureCatalog
 from blazon_parse.search_url import (
     DEFAULT_MATCH_TYPE,
     KINGDOM_CODES,
@@ -35,7 +37,55 @@ app = FastAPI(title="Blazon Parse")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
+
+@dataclass
+class CatalogRow:
+    """One catalog feature, with every term/category that resolves to it."""
+
+    feature_type: str
+    subtype: str
+    details: str | None
+    codes: dict[str, str]
+    terms: list[str]
+    categories: list[str]
+
+    def matches(self, query: str) -> bool:
+        haystacks = [
+            *self.terms,
+            *self.codes.values(),
+            *self.categories,
+            self.details or "",
+        ]
+        return any(query in haystack.lower() for haystack in haystacks)
+
+
+def _build_catalog_rows(catalog: FeatureCatalog) -> list[CatalogRow]:
+    terms_by_idx: dict[int, set[str]] = {}
+    for term, idxs in catalog.term_index.items():
+        for idx in idxs:
+            terms_by_idx.setdefault(idx, set()).add(term)
+
+    categories_by_idx: dict[int, set[str]] = {}
+    for category, idx in catalog.category_index.items():
+        categories_by_idx.setdefault(idx, set()).add(category)
+
+    rows = [
+        CatalogRow(
+            feature_type=str(feat.feature_type),
+            subtype=feat.subtype,
+            details=feat.details,
+            codes=feat.codes,
+            terms=sorted(terms_by_idx.get(idx, ())),
+            categories=sorted(categories_by_idx.get(idx, ())),
+        )
+        for idx, feat in enumerate(catalog.features)
+    ]
+    rows.sort(key=lambda r: (r.feature_type, r.terms[0] if r.terms else ""))
+    return rows
+
+
 catalog, _ = ensure_catalog(CATALOG_PATH, PARSED_CATALOG_PATH, update=False)
+catalog_rows = _build_catalog_rows(catalog)
 
 
 def _catalog_stats() -> dict:
@@ -190,6 +240,22 @@ def search_run(
     )
 
 
+@app.get("/catalog", response_class=HTMLResponse)
+def catalog_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "catalog.html", {})
+
+
+@app.get("/catalog/rows", response_class=HTMLResponse)
+def catalog_rows_route(request: Request, q: str = "") -> HTMLResponse:
+    query = q.strip().lower()
+    rows = (
+        [row for row in catalog_rows if row.matches(query)] if query else catalog_rows
+    )
+    return templates.TemplateResponse(
+        request, "_catalog_rows.html", {"rows": rows, "total": len(catalog_rows)}
+    )
+
+
 @app.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(request, "settings.html", _catalog_stats())
@@ -197,8 +263,9 @@ def settings_page(request: Request) -> HTMLResponse:
 
 @app.post("/settings/update-catalog", response_class=HTMLResponse)
 def update_catalog_route(request: Request) -> HTMLResponse:
-    global catalog
+    global catalog, catalog_rows
     catalog, updated = ensure_catalog(CATALOG_PATH, PARSED_CATALOG_PATH, update=True)
+    catalog_rows = _build_catalog_rows(catalog)
     return templates.TemplateResponse(
         request,
         "_catalog_status.html",

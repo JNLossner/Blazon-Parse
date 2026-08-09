@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block main_class %}max-w-6xl{% endblock %}
+{% block content %}
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Catalog</h2>
+    <input type="search" name="q" class="input input-bordered w-full"
+      placeholder="Search terms, codes, or categories&hellip;"
+      hx-get="/catalog/rows" hx-trigger="input changed delay:300ms, search"
+      hx-target="#catalog-table" hx-swap="innerHTML">
+  </div>
+</div>
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body overflow-x-auto">
+    <table class="table table-sm" id="catalog-table"
+      hx-get="/catalog/rows" hx-trigger="load" hx-swap="innerHTML">
+    </table>
+  </div>
+</div>
+{% endblock %}

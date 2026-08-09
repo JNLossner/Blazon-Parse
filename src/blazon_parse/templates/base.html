@@ -18,10 +18,11 @@
       <a href="/" class="btn btn-ghost text-xl">Blazon Parse</a>
     </div>
     <div class="flex-none">
+      <a href="/catalog" class="btn btn-ghost">Catalog</a>
       <a href="/settings" class="btn btn-ghost">Settings</a>
     </div>
   </div>
-  <main class="container mx-auto max-w-3xl p-4 flex flex-col gap-4">
+  <main class="container mx-auto {% block main_class %}max-w-3xl{% endblock %} p-4 flex flex-col gap-4">
     {% block content %}{% endblock %}
   </main>
 </body>
