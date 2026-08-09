@@ -1,0 +1,30 @@
+services:
+  oanda:
+    build: ./docker/oanda
+    ports:
+      - "8080:80"
+    # The upstream image's own setup (regenerated from the live oanda.sca.org
+    # on every start) occasionally dies partway through; a restart re-runs it
+    # cleanly. See docker/oanda/entrypoint.sh.
+    restart: on-failure:5
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/oanda_complex.cgi?p1=test&raw=enabled"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      OANDA_SEARCH_URL: http://oanda/oanda_complex.cgi
+      BLAZON_PARSE_HOST: 0.0.0.0
+      BLAZON_PARSE_PORT: 8000
+      BLAZON_PARSE_OPEN_BROWSER: "false"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      oanda:
+        condition: service_healthy

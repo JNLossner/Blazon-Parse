@@ -14,7 +14,7 @@ from markupsafe import Markup, escape
 
 from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
 from blazon_parse.catalog import ensure_catalog
-from blazon_parse.config import WEB_HOST, WEB_PORT
+from blazon_parse.config import WEB_HOST, WEB_OPEN_BROWSER, WEB_PORT
 from blazon_parse.feature_catalog import FeatureCatalog
 from blazon_parse.search_url import (
     DEFAULT_MATCH_TYPE,
@@ -276,7 +276,8 @@ def update_catalog_route(request: Request) -> HTMLResponse:
 
 
 def run() -> None:
-    webbrowser.open(f"http://{WEB_HOST}:{WEB_PORT}")
+    if WEB_OPEN_BROWSER:
+        webbrowser.open(f"http://{WEB_HOST}:{WEB_PORT}")
     uvicorn.run(app, host=WEB_HOST, port=WEB_PORT)
 
 

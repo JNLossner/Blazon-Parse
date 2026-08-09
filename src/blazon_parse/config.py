@@ -26,3 +26,8 @@ OANDA_SEARCH_URL = os.environ.get(
 
 WEB_HOST = os.environ.get("BLAZON_PARSE_HOST", "127.0.0.1")
 WEB_PORT = int(os.environ.get("BLAZON_PARSE_PORT", "8000"))
+WEB_OPEN_BROWSER = os.environ.get("BLAZON_PARSE_OPEN_BROWSER", "true").lower() not in (
+    "false",
+    "0",
+    "no",
+)
