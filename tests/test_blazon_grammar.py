@@ -15,9 +15,11 @@ TINCTURES = ["argent", "sable", "gules", "azure", "or", "vert", "purpure", "ermi
 DIVISIONS = [
     "per pale",
     "per bend",
+    "per bend sinister",
     "per fess",
     "per chevron",
     "per saltire",
+    "per pall inverted",
     "quarterly",
 ]
 TREATMENTS = ["ermined", "masoned", "semy"]
@@ -79,6 +81,43 @@ def test_division_with_and_joined_tinctures() -> None:
     assert tree.charge_groups == [
         [ChargeNode(count="a", content="lion", tinctures=["sable"])]
     ]
+
+
+def test_division_with_oxford_comma_joined_tinctures() -> None:
+    """A 3+ tincture list uses commas between all but the last pair, not just 'and'."""
+    tree = parse(
+        "Per pall inverted azure, purpure, and argent, two edelweiss flowers "
+        "argent and a Maltese cross sable."
+    )
+    assert tree.field.division == "per pall inverted"
+    assert tree.field.tinctures == ["azure", "purpure", "argent"]
+    assert tree.charge_groups == [
+        [
+            ChargeNode(count="two", content="edelweiss flowers", tinctures=["argent"]),
+            ChargeNode(count="a", content="maltese cross", tinctures=["sable"]),
+        ]
+    ]
+
+
+@pytest.mark.xfail(
+    reason="Commas are used for more than field/charge-clause boundaries. "
+    "In this example, they separate a single hawk's attributes (posture, "
+    "wing position, tincture note), so every comma wrongly ends the current "
+    "clause and fragments this into six charge groups, several empty. Also "
+    "demonstrates a second bug: 'rising' is a real posture word but misfires "
+    "as a bare-gerund relation with an empty target.",
+    strict=True,
+)
+def test_hawk_with_comma_separated_attributes() -> None:
+    tree = parse(
+        "Argent, on a bend sinister doubly cotised azure, a hawk rising, "
+        "wings displayed and inverted, and an increscent, both palewise, argent."
+    )
+    assert len(tree.charge_groups) == 1
+    bend = tree.charge_groups[0][0]
+    assert bend.content == "bend sinister doubly cotised"
+    hawk = bend.relations[0].charges[0]
+    assert hawk.content == "hawk rising"
 
 
 def test_fieldless_parenthetical_prefix_with_fronted_on() -> None:

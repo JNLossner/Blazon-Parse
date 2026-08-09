@@ -27,10 +27,11 @@ def parse_tincture_list(cursor: Cursor, tinctures: list[str]) -> list[str]:
     while (n := match_phrase(cursor.words, cursor.pos, tinctures)) is not None:
         result.append(" ".join(cursor.words[cursor.pos : cursor.pos + n]))
         cursor.advance(n)
-        if cursor.peek() == "and" and match_phrase(
-            cursor.words, cursor.pos + 1, tinctures
-        ):
-            cursor.advance(1)
+        skip = 1 if cursor.peek() == "," else 0
+        if cursor.words[cursor.pos + skip : cursor.pos + skip + 1] == ["and"]:
+            skip += 1
+        if skip and match_phrase(cursor.words, cursor.pos + skip, tinctures):
+            cursor.advance(skip)
         else:
             break
     return result
