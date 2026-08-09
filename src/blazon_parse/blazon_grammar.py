@@ -51,14 +51,53 @@ def parse_content(cursor: Cursor, tinctures: list[str]) -> str:
     return " ".join(cursor.words[start : cursor.pos])
 
 
+def _is_new_charge_signal(words: list[str], pos: int) -> bool:
+    """A quantity, or a relation word that always re-states its own host
+    (e.g. "on"), both mean an independent charge starts here."""
+    if match_quantity(words, pos) is not None:
+        return True
+    m = match_relation(words, pos, at_start=True)
+    return m is not None and is_fronted_only(m[1])
+
+
 def _match_and_relation(cursor: Cursor) -> tuple[int, str] | None:
-    if (
-        cursor.peek() != "and"
-        or match_quantity(cursor.words, cursor.pos + 1) is not None
-    ):
+    if cursor.peek() != "and" or _is_new_charge_signal(cursor.words, cursor.pos + 1):
         return None
-    m = match_relation(cursor.words, cursor.pos + 1)
-    return m if m and not is_fronted_only(m[1]) else None
+    return match_relation(cursor.words, cursor.pos + 1)
+
+
+def _deepest_charge(charge: ChargeNode) -> ChargeNode:
+    while charge.relations:
+        charge = charge.relations[-1].charges[-1]
+    return charge
+
+
+def _parse_relation(cursor: Cursor, keyword: str, tinctures: list[str]) -> Relation:
+    return Relation(
+        keyword=keyword,
+        charges=parse_charge_group(cursor, tinctures, allow_and_continuation=False),
+    )
+
+
+def _extend_previous_charge(
+    cursor: Cursor, charge: ChargeNode, tinctures: list[str]
+) -> None:
+    start = cursor.pos
+    while cursor.peek() not in (None, ","):
+        if match_phrase(cursor.words, cursor.pos, tinctures) is not None:
+            break
+        if match_relation(cursor.words, cursor.pos) is not None:
+            break
+        if cursor.peek() == "and" and (
+            match_quantity(cursor.words, cursor.pos + 1) is not None
+            or match_relation(cursor.words, cursor.pos + 1) is not None
+        ):
+            break
+        cursor.advance(1)
+    extra = " ".join(cursor.words[start : cursor.pos])
+    charge.content = f"{charge.content} {extra}".strip()
+    charge.tinctures.extend(parse_tincture_list(cursor, tinctures))
+    charge.relations.extend(parse_relations(cursor, tinctures))
 
 
 def parse_relations(
@@ -74,33 +113,24 @@ def parse_relations(
         else:
             break
         cursor.advance(n)
-        relations.append(
-            Relation(
-                keyword=keyword,
-                charges=parse_charge_group(
-                    cursor, tinctures, allow_and_continuation=False
-                ),
-            )
-        )
+        relations.append(_parse_relation(cursor, keyword, tinctures))
     return relations
 
 
 def parse_charge(
     cursor: Cursor, tinctures: list[str], *, allow_and_continuation: bool = True
 ) -> ChargeNode:
+    if cursor.peek() == "and":
+        cursor.advance(1)
+
     if (m := match_relation(cursor.words, cursor.pos, at_start=True)) is not None:
         n, keyword = m
         cursor.advance(n)
         host = parse_charge(cursor, tinctures)
-        if cursor.peek() not in (None, ","):
-            host.relations.append(
-                Relation(
-                    keyword=keyword,
-                    charges=parse_charge_group(
-                        cursor, tinctures, allow_and_continuation=False
-                    ),
-                )
-            )
+        skip = 1 if cursor.peek() == "," else 0
+        if cursor.words[cursor.pos + skip : cursor.pos + skip + 1]:
+            cursor.advance(skip)
+            host.relations.append(_parse_relation(cursor, keyword, tinctures))
         else:
             host.content = f"{keyword} {host.content}".strip()
         return host
@@ -183,6 +213,22 @@ def parse_blazon(
         cursor.advance(1)
         if cursor.peek() is None:
             break
-        charge_groups.append(parse_charge_group(cursor, tinctures))
+        if cursor.peek() == "and" and charge_groups:
+            m = _match_and_relation(cursor)
+            if m is None:
+                cursor.advance(1)
+                charge_groups[-1].append(parse_charge(cursor, tinctures))
+            else:
+                n, keyword = m
+                cursor.advance(1 + n)
+                _deepest_charge(charge_groups[-1][-1]).relations.append(
+                    _parse_relation(cursor, keyword, tinctures)
+                )
+        elif charge_groups and not _is_new_charge_signal(cursor.words, cursor.pos):
+            _extend_previous_charge(
+                cursor, _deepest_charge(charge_groups[-1][-1]), tinctures
+            )
+        else:
+            charge_groups.append(parse_charge_group(cursor, tinctures))
 
     return BlazonTree(field=field, charge_groups=charge_groups)

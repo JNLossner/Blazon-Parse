@@ -56,7 +56,7 @@ def match_relation(
     next_word = words[i + 1] if i + 1 < len(words) else None
     if word.endswith("ed") and next_word in _PREPOSITIONS:
         return 2, f"{word} {next_word}"
-    if not at_start and word.endswith("ing"):
+    if not at_start and word.endswith("ing") and next_word not in (None, ",", "and"):
         return 1, word
     return None
 

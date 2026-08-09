@@ -11,7 +11,17 @@ import pytest
 from blazon_parse.blazon_grammar import parse_blazon
 from blazon_parse.blazon_tree import BlazonTree, ChargeNode, FieldNode, Relation
 
-TINCTURES = ["argent", "sable", "gules", "azure", "or", "vert", "purpure", "ermine"]
+TINCTURES = [
+    "argent",
+    "sable",
+    "gules",
+    "azure",
+    "or",
+    "vert",
+    "purpure",
+    "ermine",
+    "proper",
+]
 DIVISIONS = [
     "per pale",
     "per bend",
@@ -63,7 +73,8 @@ def test_field_treatment_and_maintaining_relation() -> None:
     assert tree.field.tinctures == ["argent"]
     assert tree.field.modifiers == ["ermined vert"]
     beaver = tree.charge_groups[0][0]
-    assert beaver.content == "beaver sejant erect proper"
+    assert beaver.content == "beaver sejant erect"
+    assert beaver.tinctures == ["proper"]
     assert beaver.relations == [
         Relation(
             keyword="maintaining",
@@ -99,25 +110,89 @@ def test_division_with_oxford_comma_joined_tinctures() -> None:
     ]
 
 
-@pytest.mark.xfail(
-    reason="Commas are used for more than field/charge-clause boundaries. "
-    "In this example, they separate a single hawk's attributes (posture, "
-    "wing position, tincture note), so every comma wrongly ends the current "
-    "clause and fragments this into six charge groups, several empty. Also "
-    "demonstrates a second bug: 'rising' is a real posture word but misfires "
-    "as a bare-gerund relation with an empty target.",
-    strict=True,
-)
 def test_hawk_with_comma_separated_attributes() -> None:
+    """Commas here separate a single hawk's own attributes (posture, wing
+    position), not new charges - and "and an increscent" still correctly
+    lands as a second, separate primary charge in the same group."""
     tree = parse(
         "Argent, on a bend sinister doubly cotised azure, a hawk rising, "
         "wings displayed and inverted, and an increscent, both palewise, argent."
     )
     assert len(tree.charge_groups) == 1
-    bend = tree.charge_groups[0][0]
+    bend, increscent = tree.charge_groups[0]
     assert bend.content == "bend sinister doubly cotised"
+    assert bend.tinctures == ["azure"]
     hawk = bend.relations[0].charges[0]
-    assert hawk.content == "hawk rising"
+    assert hawk.content == "hawk rising wings displayed and inverted"
+    assert increscent.content == "increscent both palewise"
+    assert increscent.tinctures == ["argent"]
+
+
+def test_acorn_with_comma_separated_attributes_and_trailing_relation() -> None:
+    """Commas separate the acorn's own attributes ("inverted", "slipped and
+    leaved"), "proper" reattaches as its tincture instead of standing alone,
+    and "on a chief azure, three estoiles Or" still correctly nests as a
+    separate primary with its own tertiary via the host->target comma."""
+    tree = parse(
+        "Argent, an acorn inverted, slipped and leaved, proper, on a chief "
+        "azure, three estoiles Or."
+    )
+    assert len(tree.charge_groups) == 2
+    acorn = tree.charge_groups[0][0]
+    assert acorn.content == "acorn inverted slipped and leaved"
+    assert acorn.tinctures == ["proper"]
+    chief = tree.charge_groups[1][0]
+    assert chief.content == "chief"
+    assert chief.tinctures == ["azure"]
+    assert chief.relations == [
+        Relation(
+            keyword="on",
+            charges=[ChargeNode(count="three", content="estoiles", tinctures=["or"])],
+        )
+    ]
+
+
+def test_between_reached_via_comma_attaches_to_the_right_host() -> None:
+    """ "between" is trailing-only (attaches to an already-established charge),
+    unlike "on" - reaching it through a comma must not treat it as fronted."""
+    tree = parse(
+        "Argent, a chevron azure, between two unicorns passant sable and a pellet."
+    )
+    assert len(tree.charge_groups) == 1
+    chevron = tree.charge_groups[0][0]
+    assert chevron.content == "chevron"
+    assert chevron.tinctures == ["azure"]
+    assert chevron.relations == [
+        Relation(
+            keyword="between",
+            charges=[
+                ChargeNode(
+                    count="two", content="unicorns passant", tinctures=["sable"]
+                ),
+                ChargeNode(count="a", content="pellet"),
+            ],
+        )
+    ]
+
+
+def test_and_relation_word_after_comma_does_not_strand_a_leading_and() -> None:
+    """A top-level comma followed by "and on X" must be recognized the same
+    way "and on X" is recognized without a preceding comma."""
+    tree = parse("Argent, a wheel, and on a chief azure a spiral horn argent.")
+    assert len(tree.charge_groups) == 1
+    wheel, chief = tree.charge_groups[0]
+    assert wheel.content == "wheel"
+    assert wheel.relations == []
+    assert chief.content == "chief"
+    assert chief.tinctures == ["azure"]
+    assert chief.relations == [
+        Relation(
+            keyword="on",
+            charges=[
+                ChargeNode(count="a", content="spiral horn", tinctures=["argent"])
+            ],
+        )
+    ]
 
 
 def test_fieldless_parenthetical_prefix_with_fronted_on() -> None:
