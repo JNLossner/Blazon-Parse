@@ -85,6 +85,40 @@ class CrossReference:
         )
 
 
+# Trailing qualifiers with no literal word of their own in blazon text -
+# "heraldic" marks the unmarked default.
+_DROPPED_QUALIFIERS = {"heraldic"}
+
+_JOINED_TERM_CATEGORIES = {"monster", "charge treatment", "field treatment"}
+
+# A 2-part category's second segment is normally the term ("field division,
+# per bend" -> "per bend"). For a body-part like "leg, bird" this is backwards.
+_CREATURE_SCOPE_WORDS = {"beast", "bird", "fish", "monster", "reptile", "human"}
+
+# "throughout" is real vocabulary that only occurs paired with its charge,
+# so the terms are indexed under both the bare charge name and the compound phrase.
+_COMPOUND_TERM_OVERRIDES: dict[str, list[str]] = {
+    "cross, throughout": ["cross", "cross throughout"],
+    "saltire, throughout": ["saltire", "saltire throughout"],
+}
+
+
+def _cat_parts(category: str) -> list[str]:
+    return [
+        s.strip()
+        for s in category.split(",")
+        if "as charge" not in s and s.strip() not in _DROPPED_QUALIFIERS
+    ]
+
+
+def _category_term(cat_parts: list[str]) -> str:
+    if len(cat_parts) <= 1:
+        return " ".join(cat_parts)
+    if len(cat_parts) > 2 and cat_parts[0] not in _JOINED_TERM_CATEGORIES:
+        return " ".join(cat_parts[2:])
+    return " ".join(cat_parts[1:])
+
+
 @dataclass
 class Category:
     heraldic: HeraldicFeature
@@ -97,36 +131,32 @@ class Category:
     # that only coincidentally share a term (e.g. "beast, cat" the animal vs
     # "head, beast, cat" a cat's head, both ending in the term "cat").
     kind: str | None = None
+    # False for _COMPOUND_TERM_OVERRIDES entries - they share a term with an
+    # unrelated feature deliberately (e.g. "cross, as charge" and
+    # "cross, throughout" both reachable via bare "cross"), not because
+    # they're the same concept in different scopes like "demi" is.
+    mergeable: bool = True
 
     @classmethod
     def from_line(cls, line: str) -> Category | None:
         if line.startswith("|") or "|" not in line:
             return None
         category, code = line.split("|", 1)
-        term = category
 
-        cat_parts = [s.strip() for s in category.split(",") if "as charge" not in s]
-        cat_type = cat_parts[0]
+        cat_parts = _cat_parts(category)
+        cat_type = cat_parts[0] if cat_parts else category
         feature_type = category_feature_type(cat_type)
         subtype = ""
         kind = None
+        term = _category_term(cat_parts)
 
-        if len(cat_parts) > 1:
-            term = " ".join(cat_parts[1:])
-
-        if len(cat_parts) > 2 and cat_type not in [
-            "monster",
-            "charge treatment",
-            "field treatment",
-        ]:
+        if len(cat_parts) > 2 and cat_type not in _JOINED_TERM_CATEGORIES:
             subtype = cat_parts[1]
-            term = " ".join(cat_parts[2:])
             kind = cat_type
+        elif len(cat_parts) == 2 and cat_parts[1] in _CREATURE_SCOPE_WORDS:
+            term = cat_type
+            subtype = cat_parts[1]
         elif len(cat_parts) == 2:
-            # The same term can carry a different code per governing type
-            # (e.g. "demi" is BEAST9DEMI, BIRD9DEMI, MONSTER9DEMI...) - keep
-            # that type as the subtype so codes for the same term can merge
-            # into one feature, keyed by subtype, in parse_catalog().
             subtype = cat_type
 
         codes = {subtype: code}
@@ -144,6 +174,20 @@ class Category:
             feature_type = FeatureType.tincture
             details = term
 
+        if override := _COMPOUND_TERM_OVERRIDES.get(category):
+            terms = override
+            mergeable = False
+        elif (
+            not term
+            or term.startswith("not")
+            or term in ("other", "whole", "throughout")
+        ):
+            terms = []
+            mergeable = True
+        else:
+            terms = [term]
+            mergeable = True
+
         return cls(
             heraldic=HeraldicFeature(
                 feature_type=feature_type,
@@ -152,12 +196,9 @@ class Category:
                 details=details,
             ),
             category=category,
-            terms=[]
-            if not term
-            or term.startswith("not")
-            or term in ("other", "whole", "throughout")
-            else [term],
+            terms=terms,
             kind=kind,
+            mergeable=mergeable,
         )
 
 
@@ -166,16 +207,22 @@ def _pluralize(term: str) -> str:
     return plural if plural else term
 
 
-def _add_plural_keys(lookup: dict[str, list]) -> None:
-    """Add each term's plural as an additional key mapping to the same values.
+def _add_plural_keys(
+    features: list[HeraldicFeature], term_index: dict[str, list[int]]
+) -> None:
+    """Add each charge term's plural as an additional key mapping to the same values.
 
-    Blazons commonly use the plural (e.g. "three roses"), so lookups need to
-    recognize both forms.
+    Blazons commonly use the plural (e.g. "three roses"), so charge lookups
+    need to recognize both forms.
     """
-    for term in list(lookup):
+    for term in list(term_index):
+        idxs = term_index[term]
+        if not any(features[i].feature_type == FeatureType.charge for i in idxs):
+            continue
         plural = _pluralize(term)
         if plural != term:
-            lookup.setdefault(plural, []).extend(lookup[term])
+            for idx in idxs:
+                _index_term(term_index, plural, idx)
 
 
 @dataclass
@@ -188,11 +235,43 @@ class FeatureCatalog:
     creature_subtypes: list[str] = dataclass_field(default_factory=list)
     preferred_ambiguous_codes: list[str] = dataclass_field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        # Derived indexes, rebuilt from term_index/category_index.
+        self._type_terms: dict[FeatureType, set[str]] = {}
+        self._terms_by_feature: dict[int, set[str]] = {}
+        for term, idxs in self.term_index.items():
+            for idx in idxs:
+                self._terms_by_feature.setdefault(idx, set()).add(term)
+                feature_type = self.features[idx].feature_type
+                self._type_terms.setdefault(feature_type, set()).add(term)
+
+        self._categories_by_feature: dict[int, set[str]] = {}
+        for category, idx in self.category_index.items():
+            self._categories_by_feature.setdefault(idx, set()).add(category)
+
     def __getitem__(self, term: str) -> list[HeraldicFeature]:
         return [self.features[i] for i in self.term_index.get(term, [])]
 
     def terms(self) -> KeysView[str]:
         return self.term_index.keys()
+
+    def terms_of_type(self, *types: FeatureType) -> list[str]:
+        """All indexed terms whose feature is one of `types`."""
+        return sorted(
+            {
+                t
+                for feature_type in types
+                for t in self._type_terms.get(feature_type, ())
+            }
+        )
+
+    def terms_for(self, idx: int) -> list[str]:
+        """Every term that resolves to `features[idx]` - the reverse of term_index."""
+        return sorted(self._terms_by_feature.get(idx, ()))
+
+    def categories_for(self, idx: int) -> list[str]:
+        """Every my.cat category line that resolves to `features[idx]` - the reverse of category_index."""
+        return sorted(self._categories_by_feature.get(idx, ()))
 
 
 def _index_term(term_index: dict[str, list[int]], term: str, idx: int) -> None:
@@ -364,9 +443,11 @@ def parse_catalog(text: str) -> FeatureCatalog:
         elif cross_reference := CrossReference.from_line(line):
             cross_references.append(cross_reference)
         elif category := Category.from_line(line):
-            term = category.terms[0] if category.terms else None
+            primary_term = category.terms[0] if category.terms else None
             merge_key = (
-                (category.heraldic.feature_type, term, category.kind) if term else None
+                (category.heraldic.feature_type, primary_term, category.kind)
+                if primary_term and category.mergeable
+                else None
             )
             if merge_key and (idx := merge_index.get(merge_key)) is not None:
                 features[idx].codes.update(category.heraldic.codes)
@@ -375,8 +456,8 @@ def parse_catalog(text: str) -> FeatureCatalog:
                 idx = len(features) - 1
                 if merge_key:
                     merge_index[merge_key] = idx
-                if term:
-                    _index_term(term_index, term, idx)
+            for term in category.terms:
+                _index_term(term_index, term, idx)
             category_index[category.category] = idx
         else:
             raise ValueError(f"my.cat:{lineno}: unrecognized line format: {raw_line!r}")
@@ -405,17 +486,26 @@ def parse_catalog(text: str) -> FeatureCatalog:
             _index_term(term_index, term, idx)
 
     for reference in cross_references:
-        # "X - see also Y" is a conflict-checking cross-reference, not an alias
-        if reference.see_also:
+        if reference.see_also or reference.term == "point":
             continue
-        if reference.term == "point":
+        ref_parts = _cat_parts(reference.term)
+        if len(ref_parts) == 2 and ref_parts[1] == "sea":
+            terms = [f"sea {ref_parts[0]}", f"sea-{ref_parts[0]}", f"sea{ref_parts[0]}"]
+        else:
+            term = _category_term(ref_parts)
+            terms = [term] if term else []
+        if not terms:
             continue
         for target in reference.targets:
-            if (idx := category_index.get(target)) is not None:
-                _index_term(term_index, reference.term, idx)
+            idx = category_index.get(target)
+            if idx is None:
+                idx = category_index.get(", ".join(_cat_parts(target)))
+            if idx is not None:
+                for term in terms:
+                    _index_term(term_index, term, idx)
 
     _add_extra_term_aliases(category_index, term_index)
-    _add_plural_keys(term_index)
+    _add_plural_keys(features, term_index)
     _add_count_word_terms(term_index)
     _add_group_participle_terms(term_index)
     _add_division_tags(features, term_index)

@@ -58,23 +58,14 @@ class CatalogRow:
 
 
 def _build_catalog_rows(catalog: FeatureCatalog) -> list[CatalogRow]:
-    terms_by_idx: dict[int, set[str]] = {}
-    for term, idxs in catalog.term_index.items():
-        for idx in idxs:
-            terms_by_idx.setdefault(idx, set()).add(term)
-
-    categories_by_idx: dict[int, set[str]] = {}
-    for category, idx in catalog.category_index.items():
-        categories_by_idx.setdefault(idx, set()).add(category)
-
     rows = [
         CatalogRow(
             feature_type=str(feat.feature_type),
             subtype=feat.subtype,
             details=feat.details,
             codes=feat.codes,
-            terms=sorted(terms_by_idx.get(idx, ())),
-            categories=sorted(categories_by_idx.get(idx, ())),
+            terms=catalog.terms_for(idx),
+            categories=catalog.categories_for(idx),
         )
         for idx, feat in enumerate(catalog.features)
     ]

@@ -135,12 +135,6 @@ def test_strawberry_plant_is_reachable(catalog: FeatureCatalog) -> None:
     assert "PLANT-STRAWBERRY" in codes_for(catalog, "strawberry")
 
 
-# Known, not-yet-fixed gap: unlike "cross", "saltire" has no self-referential
-# "saltire - see saltire, as charge and saltire, throughout" alias in my.cat,
-# so the bare word never reaches either real code (SALTIRE or SALTIRE*9).
-@pytest.mark.xfail(
-    reason="saltire has no bare-word alias to its coded features", strict=True
-)
 def test_bare_saltire_reaches_a_real_code(catalog: FeatureCatalog) -> None:
     assert codes_for(catalog, "saltire") & {"SALTIRE", "SALTIRE*9"}
 
@@ -150,12 +144,8 @@ def _codes_in_groups(catalog: FeatureCatalog, blazon: str) -> set[str]:
     return {t.split(":")[0] for g in groups for t in g.terms}
 
 
-# There's no reliable textual signal to pick ordinary-form vs charge-form
-# Both codes should come back so the user can choose.
-@pytest.mark.xfail(
-    reason="'cross' only ever reaches CROSS, never CRAC",
-    strict=True,
-)
+# There's no reliable textual signal to pick ordinary-form vs charge-form -
+# both codes come back so the user can choose.
 def test_cross_is_ambiguous_between_ordinary_and_charge(
     catalog: FeatureCatalog,
 ) -> None:
@@ -163,10 +153,6 @@ def test_cross_is_ambiguous_between_ordinary_and_charge(
     assert {"CROSS", "CRAC"} <= codes
 
 
-@pytest.mark.xfail(
-    reason="'saltire' has no alias to either of its coded features SALTIRE/SALTIRE*9",
-    strict=True,
-)
 def test_saltire_is_ambiguous_between_ordinary_and_charge(
     catalog: FeatureCatalog,
 ) -> None:
