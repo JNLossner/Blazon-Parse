@@ -21,31 +21,48 @@ FEATURE_TYPE_MAP: dict[str, FeatureType] = {
     " ".join(feat.name.split("_")): feat for feat in FeatureType
 }
 
+# Every `Category` line's first comma-part, for the ones that don't
+# default to FeatureType.charge.
+_CATEGORY_FEATURE_TYPES: dict[str, FeatureType] = {
+    "field": FeatureType.field_division,
+    "fieldless": FeatureType.field_division,
+    "field division": FeatureType.field_division,
+    "field treatment": FeatureType.field_treatment,
+    "charge treatment": FeatureType.charge_treatment,
+    "arrangement": FeatureType.arrangement,
+}
 
-def to_feature_type(category: str) -> FeatureType:
-    if category in FEATURE_TYPE_MAP:
-        return FEATURE_TYPE_MAP[category]
+
+def category_feature_type(category_type: str) -> FeatureType:
+    return _CATEGORY_FEATURE_TYPES.get(category_type, FeatureType.charge)
+
+
+def relation_feature_type(feature_set: str) -> FeatureType:
+    """FeatureType for a `FeatureRelation`'s `feature_set` token, irregular
+    internal codenames with no consistent separator"""
+    if feature_set in FEATURE_TYPE_MAP:
+        return FEATURE_TYPE_MAP[feature_set]
 
     for key, value in sorted(FEATURE_TYPE_MAP.items(), reverse=True):
-        if key in category:
+        if key in feature_set:
             return value
 
-    if category == "number":
+    if feature_set == "number":
         return FeatureType.count
 
-    if category in ("field", "fieldless"):
+    if feature_set in ("field", "fieldless"):
         return FeatureType.field_division
 
-    if "orientation" in category:
+    if "orientation" in feature_set:
         return FeatureType.posture
-    if "_dir" in category:
+    if "_dir" in feature_set:
         return FeatureType.posture
 
-    if category in ("tertiaries", "style"):
+    if feature_set in ("tertiaries", "style"):
         return FeatureType.charge_treatment
-    if "type" in category:
+    if "type" in feature_set:
         return FeatureType.charge_treatment
-    if "family" in category:
+    if "family" in feature_set:
         return FeatureType.charge_treatment
 
     return FeatureType.charge

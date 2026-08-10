@@ -7,7 +7,12 @@ from pathlib import Path
 
 import inflect
 
-from blazon_parse.heraldic import FeatureType, HeraldicFeature, to_feature_type
+from blazon_parse.heraldic import (
+    FeatureType,
+    HeraldicFeature,
+    category_feature_type,
+    relation_feature_type,
+)
 
 _inflect = inflect.engine()
 _COUNT_TERM_RE = re.compile(r"^(?P<prefix>of )?(?P<digit>\d+)$")
@@ -98,11 +103,11 @@ class Category:
         if line.startswith("|") or "|" not in line:
             return None
         category, code = line.split("|", 1)
-        feature_type = to_feature_type(category)
         term = category
 
         cat_parts = [s.strip() for s in category.split(",") if "as charge" not in s]
         cat_type = cat_parts[0]
+        feature_type = category_feature_type(cat_type)
         subtype = ""
         kind = None
 
@@ -377,7 +382,7 @@ def parse_catalog(text: str) -> FeatureCatalog:
             raise ValueError(f"my.cat:{lineno}: unrecognized line format: {raw_line!r}")
 
     for relation in relations:
-        feat_type = to_feature_type(relation.feature_set)
+        feat_type = relation_feature_type(relation.feature_set)
         term = " ".join(
             t
             for t in relation.tiers[0][0].split(" ")
