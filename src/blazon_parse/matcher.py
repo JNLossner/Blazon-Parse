@@ -5,11 +5,9 @@ from blazon_parse.heraldic import FeatureType, HeraldicFeature
 
 
 def find_all(string: str, substring: str) -> list[tuple[int, int]]:
-    """All (start, end) spans of substring in string, including overlapping ones."""
-    return [
-        (m.start(), m.start() + len(substring))
-        for m in re.finditer(f"(?={re.escape(substring)})", string)
-    ]
+    """All (start, end) spans of substring in string, at word boundaries only."""
+    pattern = r"\b" + re.escape(substring) + r"\b"
+    return [(m.start(), m.end()) for m in re.finditer(pattern, string)]
 
 
 def _dedup_features(
