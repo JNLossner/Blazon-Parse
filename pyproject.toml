@@ -1,10 +1,11 @@
 [project]
 name = "blazon-parse"
 version = "0.1.0"
-description = "Add your description here"
+description = "Parse SCA blazon text into O&A complex-search terms"
 authors = [
     { name = "Jannika Lossner" }
 ]
+license = "MIT"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.118.0",
