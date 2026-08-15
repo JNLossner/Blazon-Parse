@@ -1,8 +1,11 @@
 import argparse
 from pathlib import Path
 
-from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
+from blazon_parse.blazon_grammar import parse_blazon
+from blazon_parse.blazon_lines import blazon_lines, grouped_blazon_lines
+from blazon_parse.blazon_resolve import resolve_blazon
 from blazon_parse.catalog import ensure_catalog
+from blazon_parse.heraldic import FeatureType
 from blazon_parse.search_url import build_search_url
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -34,15 +37,21 @@ def main() -> None:
         f"Loaded catalog: {len(catalog.features)} features, {len(catalog.terms())} terms."
     )
 
-    blazon_struct = build_blazon(args.blazon, catalog)
+    tree = parse_blazon(
+        args.blazon,
+        tinctures=catalog.terms_of_type(FeatureType.tincture),
+        divisions=catalog.terms_of_type(FeatureType.field_division),
+        treatments=catalog.terms_of_type(FeatureType.field_treatment),
+    )
+    resolved = resolve_blazon(tree, catalog)
     print(args.blazon, "\n")
     if args.verbose:
-        for group in grouped_search_terms(blazon_struct, include_variants=True):
+        for group in grouped_blazon_lines(resolved):
             print(group.label)
             for term in group.terms:
                 print(" " * 4, term)
     if args.search:
-        print(build_search_url(blazon_struct.search_terms(include_variants=False)))
+        print(build_search_url(blazon_lines(resolved)))
 
 
 if __name__ == "__main__":

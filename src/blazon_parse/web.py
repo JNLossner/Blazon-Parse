@@ -13,8 +13,8 @@ from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
 from blazon_parse.blazon_grammar import parse_blazon
-from blazon_parse.blazon_lines import blazon_lines
-from blazon_parse.blazon_parser import TermGroup, build_blazon, grouped_search_terms
+from blazon_parse.blazon_lines import grouped_blazon_lines
+from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
 from blazon_parse.blazon_resolve import resolve_blazon
 from blazon_parse.catalog import ensure_catalog
 from blazon_parse.config import WEB_HOST, WEB_OPEN_BROWSER, WEB_PORT
@@ -191,8 +191,7 @@ def parse_new(request: Request, blazon: Annotated[str, Form()]) -> HTMLResponse:
         blazon, tinctures=tinctures, divisions=divisions, treatments=treatments
     )
     resolved = resolve_blazon(tree, catalog)
-    terms = blazon_lines(resolved)
-    groups = [TermGroup("Search terms", terms)] if terms else []
+    groups = grouped_blazon_lines(resolved)
     return templates.TemplateResponse(
         request,
         "_breakdown.html",
