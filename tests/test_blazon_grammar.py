@@ -217,6 +217,18 @@ def test_fieldless_comma_prefix() -> None:
     ]
 
 
+def test_trailing_word_after_last_charge_tincture_is_not_dropped() -> None:
+    """A bare word after the final charge's own tincture (no comma, no "and")
+    used to be silently discarded - the cursor was left sitting on it with
+    nothing left to consume it. Here "addorsed" describes the pair as a
+    whole; back-applying it across siblings is resolver work, but the
+    grammar must not lose the word in the first place."""
+    tree = parse("Argent, a wolf sable and a lion gules addorsed.")
+    wolf, lion = tree.charge_groups[0]
+    assert wolf.content == "wolf"
+    assert lion.content == "lion addorsed"
+
+
 def test_and_within_continues_the_current_host() -> None:
     """Real pattern from the SCA armorial ('...tailed and within a bordure
     ...', '...fructed and within an orle...') - unlike 'on', 'within' is

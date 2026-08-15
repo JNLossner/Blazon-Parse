@@ -79,9 +79,7 @@ def _parse_relation(cursor: Cursor, keyword: str, tinctures: list[str]) -> Relat
     )
 
 
-def _extend_previous_charge(
-    cursor: Cursor, charge: ChargeNode, tinctures: list[str]
-) -> None:
+def _extend_charge(cursor: Cursor, charge: ChargeNode, tinctures: list[str]) -> None:
     start = cursor.pos
     while cursor.peek() not in (None, ","):
         if match_phrase(cursor.words, cursor.pos, tinctures) is not None:
@@ -144,9 +142,14 @@ def parse_charge(
     relations = parse_relations(
         cursor, tinctures, allow_and_continuation=allow_and_continuation
     )
-    return ChargeNode(
+    charge = ChargeNode(
         count=count, content=content, tinctures=charge_tinctures, relations=relations
     )
+    if cursor.peek() not in (None, ",", "and") and not _is_new_charge_signal(
+        cursor.words, cursor.pos
+    ):
+        _extend_charge(cursor, charge, tinctures)
+    return charge
 
 
 def parse_charge_group(
@@ -225,9 +228,7 @@ def parse_blazon(
                     _parse_relation(cursor, keyword, tinctures)
                 )
         elif charge_groups and not _is_new_charge_signal(cursor.words, cursor.pos):
-            _extend_previous_charge(
-                cursor, _deepest_charge(charge_groups[-1][-1]), tinctures
-            )
+            _extend_charge(cursor, _deepest_charge(charge_groups[-1][-1]), tinctures)
         else:
             charge_groups.append(parse_charge_group(cursor, tinctures))
 
