@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="alert alert-info">
+  <span>Parsing via the new grammar-tree pipeline - no unmatched-text highlighting yet, and everything lands in one group until group-placement tags are wired up.</span>
+</div>
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Parse a blazon (new pipeline)</h2>
+    <form id="blazon-form" hx-post="/parse-new" hx-target="#breakdown" hx-swap="innerHTML">
+      <textarea name="blazon" id="blazon-input" class="textarea textarea-bordered w-full" rows="3"
+        placeholder="Argent, a lion sable."></textarea>
+      <button type="submit" class="btn btn-primary mt-2">Parse</button>
+    </form>
+  </div>
+</div>
+
+<div id="breakdown"></div>
+<div id="search-result"></div>
+
+<script>
+  document.getElementById("blazon-input").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      document.getElementById("blazon-form").requestSubmit();
+    }
+  });
+</script>
+{% endblock %}

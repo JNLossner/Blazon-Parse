@@ -12,10 +12,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
-from blazon_parse.blazon_parser import build_blazon, grouped_search_terms
+from blazon_parse.blazon_grammar import parse_blazon
+from blazon_parse.blazon_lines import blazon_lines
+from blazon_parse.blazon_parser import TermGroup, build_blazon, grouped_search_terms
+from blazon_parse.blazon_resolve import resolve_blazon
 from blazon_parse.catalog import ensure_catalog
 from blazon_parse.config import WEB_HOST, WEB_OPEN_BROWSER, WEB_PORT
 from blazon_parse.feature_catalog import FeatureCatalog
+from blazon_parse.heraldic import FeatureType
 from blazon_parse.search_url import (
     DEFAULT_MATCH_TYPE,
     KINGDOM_CODES,
@@ -73,8 +77,19 @@ def _build_catalog_rows(catalog: FeatureCatalog) -> list[CatalogRow]:
     return rows
 
 
+def _catalog_word_lists(
+    catalog: FeatureCatalog,
+) -> tuple[list[str], list[str], list[str]]:
+    return (
+        catalog.terms_of_type(FeatureType.tincture),
+        catalog.terms_of_type(FeatureType.field_division),
+        catalog.terms_of_type(FeatureType.field_treatment),
+    )
+
+
 catalog, _ = ensure_catalog(CATALOG_PATH, PARSED_CATALOG_PATH, update=False)
 catalog_rows = _build_catalog_rows(catalog)
+tinctures, divisions, treatments = _catalog_word_lists(catalog)
 
 
 def _catalog_stats() -> dict:
@@ -160,6 +175,30 @@ def parse(request: Request, blazon: Annotated[str, Form()]) -> HTMLResponse:
         {
             "groups": groups,
             "highlighted_blazon": highlighted_blazon,
+            "kingdoms": KINGDOMS,
+        },
+    )
+
+
+@app.get("/new", response_class=HTMLResponse)
+def new_index(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "index_new.html", {})
+
+
+@app.post("/parse-new", response_class=HTMLResponse)
+def parse_new(request: Request, blazon: Annotated[str, Form()]) -> HTMLResponse:
+    tree = parse_blazon(
+        blazon, tinctures=tinctures, divisions=divisions, treatments=treatments
+    )
+    resolved = resolve_blazon(tree, catalog)
+    terms = blazon_lines(resolved)
+    groups = [TermGroup("Search terms", terms)] if terms else []
+    return templates.TemplateResponse(
+        request,
+        "_breakdown.html",
+        {
+            "groups": groups,
+            "highlighted_blazon": None,
             "kingdoms": KINGDOMS,
         },
     )
@@ -252,9 +291,10 @@ def settings_page(request: Request) -> HTMLResponse:
 
 @app.post("/settings/update-catalog", response_class=HTMLResponse)
 def update_catalog_route(request: Request) -> HTMLResponse:
-    global catalog, catalog_rows
+    global catalog, catalog_rows, tinctures, divisions, treatments
     catalog, updated = ensure_catalog(CATALOG_PATH, PARSED_CATALOG_PATH, update=True)
     catalog_rows = _build_catalog_rows(catalog)
+    tinctures, divisions, treatments = _catalog_word_lists(catalog)
     return templates.TemplateResponse(
         request,
         "_catalog_status.html",
