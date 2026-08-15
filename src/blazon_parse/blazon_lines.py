@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+from blazon_parse.blazon_parser import TermGroup
 from blazon_parse.blazon_resolved import ResolvedBlazon, ResolvedCharge, ResolvedField
 from blazon_parse.heraldic import FeatureType, HeraldicFeature
 
@@ -35,7 +36,9 @@ def _identity_and_modifiers(
     return identity, modifiers
 
 
-def charge_lines(charge: ResolvedCharge, rank_tag: str | None) -> list[str]:
+def own_charge_lines(charge: ResolvedCharge, rank_tag: str | None) -> list[str]:
+    """This charge's own lines - code, tincture, count, modifiers - not
+    including anything from its relations' charges."""
     identity, modifiers = _identity_and_modifiers(charge)
     if identity is None:
         return []
@@ -68,10 +71,13 @@ def charge_lines(charge: ResolvedCharge, rank_tag: str | None) -> list[str]:
 
     lines = [_line(code, charge_tags)]
     lines.extend(_line(m.search_term(), shared_tags) for m in coded_modifiers)
+    return lines
 
+
+def charge_lines(charge: ResolvedCharge, rank_tag: str | None) -> list[str]:
+    lines = own_charge_lines(charge, rank_tag)
     for relation in charge.relations:
         lines.extend(group_lines(relation.charges, relation.tag))
-
     return lines
 
 
@@ -85,27 +91,52 @@ def _uniform_tincture(charges: list[ResolvedCharge]) -> HeraldicFeature | None:
     return tinctures[0] if len(terms) == 1 else None
 
 
-def group_lines(charges: list[ResolvedCharge], rank_tag: str | None) -> list[str]:
-    lines = []
-    for charge in charges:
-        lines.extend(charge_lines(charge, rank_tag))
-
+def _arrangement_lines(
+    charges: list[ResolvedCharge], rank_tag: str | None
+) -> list[str]:
+    """Lines for arrangement features (addorsed, in annulo, ...) shared by
+    the whole sibling group - not tied to any one charge's own identity."""
     arrangement_features = [
         f
         for c in charges
         for f in c.features
         if f.feature_type == FeatureType.arrangement and f.code
     ]
-    if arrangement_features:
-        tincture = _uniform_tincture(charges)
-        group_tags = [
-            *(_tincture_tags(tincture, None) if tincture else []),
-            *([rank_tag] if rank_tag else []),
-        ]
-        for feature in arrangement_features:
-            lines.append(_line(feature.search_term(), group_tags))
+    if not arrangement_features:
+        return []
+    tincture = _uniform_tincture(charges)
+    group_tags = [
+        *(_tincture_tags(tincture, None) if tincture else []),
+        *([rank_tag] if rank_tag else []),
+    ]
+    return [_line(f.search_term(), group_tags) for f in arrangement_features]
 
+
+def group_lines(charges: list[ResolvedCharge], rank_tag: str | None) -> list[str]:
+    lines = []
+    for charge in charges:
+        lines.extend(charge_lines(charge, rank_tag))
+    lines.extend(_arrangement_lines(charges, rank_tag))
     return lines
+
+
+def charge_term_groups(
+    charges: list[ResolvedCharge], rank_tag: str | None
+) -> list[TermGroup]:
+    """Charge-labeled groups (one per charge, host and related alike) rather
+    than primary/secondary/tertiary rank groups - each holds just that
+    charge's own lines, keyed by its raw content text."""
+    groups = []
+    for charge in charges:
+        lines = own_charge_lines(charge, rank_tag)
+        if lines:
+            groups.append(TermGroup(charge.content, lines))
+        for relation in charge.relations:
+            groups.extend(charge_term_groups(relation.charges, relation.tag))
+    arrangement_lines = _arrangement_lines(charges, rank_tag)
+    if arrangement_lines:
+        groups.append(TermGroup("Arrangement", arrangement_lines))
+    return groups
 
 
 def _complete_seme(
@@ -189,17 +220,33 @@ def field_lines(field: ResolvedField) -> list[str]:
     return lines
 
 
+def _group_rank_tag(group: list[ResolvedCharge]) -> str | None:
+    is_peripheral = any(
+        f.subtype == "peripheral"
+        for charge in group
+        for f in charge.features
+        if f.feature_type == FeatureType.charge
+    )
+    return None if is_peripheral else "primary"
+
+
 def blazon_lines(blazon: ResolvedBlazon) -> list[str]:
     lines = field_lines(blazon.field)
     if not blazon.charge_groups:
         lines.append("FO")
     for group in blazon.charge_groups:
-        is_peripheral = any(
-            f.subtype == "peripheral"
-            for charge in group
-            for f in charge.features
-            if f.feature_type == FeatureType.charge
-        )
-        rank_tag = None if is_peripheral else "primary"
-        lines.extend(group_lines(group, rank_tag))
+        lines.extend(group_lines(group, _group_rank_tag(group)))
     return lines
+
+
+def grouped_blazon_lines(blazon: ResolvedBlazon) -> list[TermGroup]:
+    """Same content as blazon_lines(), reorganized into charge-labeled
+    groups instead of one flat list - no primary/secondary/tertiary rank
+    grouping, just "which charge did this line come from"."""
+    field = field_lines(blazon.field)
+    if not blazon.charge_groups:
+        field = [*field, "FO"]
+    groups = [TermGroup("Field", field)] if field else []
+    for group in blazon.charge_groups:
+        groups.extend(charge_term_groups(group, _group_rank_tag(group)))
+    return groups
