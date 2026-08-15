@@ -94,10 +94,36 @@ def resolve_field(field: FieldNode, catalog: FeatureCatalog) -> ResolvedField:
     )
 
 
+def _document_order(charge_groups: list[list[ResolvedCharge]]) -> list[ResolvedCharge]:
+    ordered = []
+    for group in charge_groups:
+        for charge in group:
+            ordered.append(charge)
+            for relation in charge.relations:
+                ordered.extend(_document_order([relation.charges]))
+    return ordered
+
+
+def _backfill_tinctures(charge_groups: list[list[ResolvedCharge]]) -> None:
+    """A tincture with nothing else to attach to applies backward to every
+    still-untinctured charge seen so far, even across different relations or
+    charge groups - real SCA blazon convention (confirmed against the old
+    pipeline's "unspecified charges" mechanism, which does the same thing)."""
+    pending: list[ResolvedCharge] = []
+    for charge in _document_order(charge_groups):
+        if charge.tinctures:
+            for waiting in pending:
+                waiting.tinctures = list(charge.tinctures)
+            pending.clear()
+        else:
+            pending.append(charge)
+
+
 def resolve_blazon(tree: BlazonTree, catalog: FeatureCatalog) -> ResolvedBlazon:
+    charge_groups = [
+        [resolve_charge(c, catalog) for c in group] for group in tree.charge_groups
+    ]
+    _backfill_tinctures(charge_groups)
     return ResolvedBlazon(
-        field=resolve_field(tree.field, catalog),
-        charge_groups=[
-            [resolve_charge(c, catalog) for c in group] for group in tree.charge_groups
-        ],
+        field=resolve_field(tree.field, catalog), charge_groups=charge_groups
     )
