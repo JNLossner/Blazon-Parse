@@ -31,6 +31,14 @@
           <input type="number" name="weight" value="1" min="1" step="1" class="input input-sm input-bordered w-16 weight-input"{% if not group.active %} disabled{% endif %}>
         </div>
         {% endfor %}
+        {% for term in group.alternates %}
+        <div class="flex items-center gap-2 py-1 term-row opacity-50">
+          <input type="checkbox" class="checkbox checkbox-sm term-toggle">
+          <input type="text" name="term" value="{{ term }}" class="input input-sm input-bordered font-mono flex-1 term-text" disabled>
+          <input type="hidden" name="match_type" value="armory description" class="match-type-hidden" disabled>
+          <input type="number" name="weight" value="1" min="1" step="1" class="input input-sm input-bordered w-16 weight-input" disabled>
+        </div>
+        {% endfor %}
       </fieldset>
       {% endfor %}
 

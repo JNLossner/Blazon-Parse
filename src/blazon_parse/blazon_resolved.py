@@ -15,6 +15,7 @@ class ResolvedCharge:
     content: str
     count: HeraldicFeature | None = None
     features: list[HeraldicFeature] = field(default_factory=list)
+    ambiguous: list[HeraldicFeature] = field(default_factory=list)
     tinctures: list[HeraldicFeature] = field(default_factory=list)
     relations: list[ResolvedRelation] = field(default_factory=list)
 

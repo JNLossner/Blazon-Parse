@@ -50,6 +50,8 @@ def main() -> None:
             print(group.label)
             for term in group.terms:
                 print(" " * 4, term)
+            for term in group.alternates:
+                print(" " * 4, "?", term)
     if args.search:
         print(build_search_url(blazon_lines(resolved)))
 

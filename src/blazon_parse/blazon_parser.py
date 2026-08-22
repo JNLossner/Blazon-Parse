@@ -517,6 +517,7 @@ class TermGroup:
     label: str
     terms: list[str]
     active: bool = True
+    alternates: list[str] = dataclass_field(default_factory=list)
 
 
 def grouped_search_terms(

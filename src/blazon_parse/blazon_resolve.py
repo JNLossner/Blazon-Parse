@@ -21,12 +21,20 @@ _STRUCTURAL_RELATION_TAGS = {"on": "tertiary", "between": "second", "within": "s
 _HELD_FAMILY = {"maintained", "sustained", "held"}
 
 
-def resolve_content(content: str, catalog: FeatureCatalog) -> list[HeraldicFeature]:
+def resolve_content(
+    content: str, catalog: FeatureCatalog
+) -> tuple[list[HeraldicFeature], list[HeraldicFeature]]:
     matches = find_catalog_matches(content, catalog)
     features = []
     for span in sorted(matches):
         features.extend(resolve_feature_candidates(matches[span]))
-    return features
+
+    charge_features = [f for f in features if f.feature_type == FeatureType.charge]
+    ambiguous = charge_features[1:]
+    if ambiguous:
+        dropped = {id(f) for f in ambiguous}
+        features = [f for f in features if id(f) not in dropped]
+    return features, ambiguous
 
 
 def resolve_tinctures(
@@ -68,10 +76,12 @@ def resolve_relation(relation: Relation, catalog: FeatureCatalog) -> ResolvedRel
 
 
 def resolve_charge(node: ChargeNode, catalog: FeatureCatalog) -> ResolvedCharge:
+    features, ambiguous = resolve_content(node.content, catalog)
     return ResolvedCharge(
         content=node.content,
         count=resolve_count(node.count, catalog),
-        features=resolve_content(node.content, catalog),
+        features=features,
+        ambiguous=ambiguous,
         tinctures=resolve_tinctures(node.tinctures, catalog),
         relations=[resolve_relation(r, catalog) for r in node.relations],
     )
@@ -84,8 +94,11 @@ def resolve_field(field: FieldNode, catalog: FeatureCatalog) -> ResolvedField:
     features = []
     if field.division:
         features.extend(resolve_feature_candidates(catalog[field.division]))
+    if field.line:
+        features.extend(resolve_feature_candidates(catalog[field.line]))
     content = field.modifiers[0] if field.modifiers else ""
-    features.extend(resolve_content(content, catalog))
+    content_features, _ = resolve_content(content, catalog)
+    features.extend(content_features)
 
     return ResolvedField(
         content=content,

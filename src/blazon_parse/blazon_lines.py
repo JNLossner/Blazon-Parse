@@ -36,6 +36,27 @@ def _identity_and_modifiers(
     return identity, modifiers
 
 
+def _shared_tags(charge: ResolvedCharge, rank_tag: str | None) -> list[str]:
+    tincture = charge.tinctures[0] if charge.tinctures else None
+    secondary_tincture = charge.tinctures[1] if len(charge.tinctures) > 1 else None
+    return [
+        *_tags(charge.count),
+        *_tincture_tags(tincture, secondary_tincture),
+        *([rank_tag] if rank_tag else []),
+    ]
+
+
+def ambiguous_charge_lines(charge: ResolvedCharge, rank_tag: str | None) -> list[str]:
+    """Alternate lines for charge-type matches that lost out to another
+    match in the same content (see `resolve_content`)."""
+    shared_tags = _shared_tags(charge, rank_tag)
+    return [
+        _line(code, shared_tags)
+        for alt in charge.ambiguous
+        if (code := alt.search_term())
+    ]
+
+
 def own_charge_lines(charge: ResolvedCharge, rank_tag: str | None) -> list[str]:
     """This charge's own lines - code, tincture, count, modifiers - not
     including anything from its relations' charges."""
@@ -46,13 +67,7 @@ def own_charge_lines(charge: ResolvedCharge, rank_tag: str | None) -> list[str]:
     if not code:
         return []
 
-    tincture = charge.tinctures[0] if charge.tinctures else None
-    secondary_tincture = charge.tinctures[1] if len(charge.tinctures) > 1 else None
-    shared_tags = [
-        *_tags(charge.count),
-        *_tincture_tags(tincture, secondary_tincture),
-        *([rank_tag] if rank_tag else []),
-    ]
+    shared_tags = _shared_tags(charge, rank_tag)
 
     coded_modifiers = []
     plain_modifiers = []
@@ -130,7 +145,13 @@ def charge_term_groups(
     for charge in charges:
         lines = own_charge_lines(charge, rank_tag)
         if lines:
-            groups.append(TermGroup(charge.content, lines))
+            groups.append(
+                TermGroup(
+                    charge.content,
+                    lines,
+                    alternates=ambiguous_charge_lines(charge, rank_tag),
+                )
+            )
         for relation in charge.relations:
             groups.extend(charge_term_groups(relation.charges, relation.tag))
     arrangement_lines = _arrangement_lines(charges, rank_tag)
