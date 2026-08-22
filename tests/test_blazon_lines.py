@@ -36,8 +36,13 @@ def resolve(catalog: FeatureCatalog, blazon: str):
     tinctures = _terms_of(catalog, FeatureType.tincture)
     divisions = _terms_of(catalog, FeatureType.field_division)
     treatments = _terms_of(catalog, FeatureType.field_treatment)
+    lines = _terms_of(catalog, FeatureType.line)
     tree = parse_blazon(
-        blazon, tinctures=tinctures, divisions=divisions, treatments=treatments
+        blazon,
+        tinctures=tinctures,
+        divisions=divisions,
+        treatments=treatments,
+        lines=lines,
     )
     return resolve_blazon(tree, catalog)
 
@@ -110,8 +115,8 @@ def test_grouped_output_labels_by_charge(catalog: FeatureCatalog) -> None:
     assert by_label["bordure"] == ["BORDURE:1:sable:charged"]
     assert by_label["mullets"] == ["STAR:3:argent:tertiary"]
 
-    all_grouped_terms = {term for g in groups for term in g.terms}
-    assert all_grouped_terms == lines_for(
+    active_terms = {term for g in groups if g.active for term in g.terms}
+    assert active_terms == lines_for(
         catalog,
         "Argent, a cat couchant guardant, on a bordure sable, three mullets argent.",
     )

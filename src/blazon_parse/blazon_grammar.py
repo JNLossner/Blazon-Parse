@@ -4,6 +4,7 @@ from blazon_parse.blazon_terminals import (
     is_fronted_only,
     lex,
     match_phrase,
+    match_position,
     match_quantity,
     match_relation,
 )
@@ -121,6 +122,13 @@ def parse_charge(
     if cursor.peek() == "and":
         cursor.advance(1)
 
+    if (m := match_position(cursor.words, cursor.pos)) is not None:
+        n, _ = m
+        cursor.advance(n)
+        return parse_charge(
+            cursor, tinctures, allow_and_continuation=allow_and_continuation
+        )
+
     if (m := match_relation(cursor.words, cursor.pos, at_start=True)) is not None:
         n, keyword = m
         cursor.advance(n)
@@ -169,13 +177,23 @@ def parse_charge_group(
 
 
 def parse_field(
-    cursor: Cursor, tinctures: list[str], divisions: list[str], treatments: list[str]
+    cursor: Cursor,
+    tinctures: list[str],
+    divisions: list[str],
+    treatments: list[str],
+    lines: list[str],
 ) -> FieldNode:
     division = None
     n = match_phrase(cursor.words, cursor.pos, divisions)
     n = n if n is not None else match_phrase(cursor.words, cursor.pos, treatments)
     if n is not None:
         division = " ".join(cursor.words[cursor.pos : cursor.pos + n])
+        cursor.advance(n)
+
+    line = None
+    n = match_phrase(cursor.words, cursor.pos, lines)
+    if n is not None:
+        line = " ".join(cursor.words[cursor.pos : cursor.pos + n])
         cursor.advance(n)
 
     field_tinctures = parse_tincture_list(cursor, tinctures)
@@ -189,7 +207,9 @@ def parse_field(
         else []
     )
 
-    return FieldNode(division=division, tinctures=field_tinctures, modifiers=modifiers)
+    return FieldNode(
+        division=division, line=line, tinctures=field_tinctures, modifiers=modifiers
+    )
 
 
 def parse_blazon(
@@ -198,6 +218,7 @@ def parse_blazon(
     tinctures: list[str],
     divisions: list[str],
     treatments: list[str],
+    lines: list[str],
 ) -> BlazonTree:
     cursor = Cursor(lex(blazon))
 
@@ -207,7 +228,7 @@ def parse_blazon(
             cursor.advance(1)
         field = FieldNode(fieldless=True)
     else:
-        field = parse_field(cursor, tinctures, divisions, treatments)
+        field = parse_field(cursor, tinctures, divisions, treatments, lines)
 
     charge_groups = []
     if cursor.peek() not in (None, ","):

@@ -2,6 +2,7 @@ import re
 
 _LOCATIVES = {"on", "between", "within"}
 _FRONTED_ONLY = {"on"}
+_POSITIONS = {"chief", "base"}
 _PREPOSITIONS = {
     "of",
     "with",
@@ -63,6 +64,15 @@ def match_relation(
 
 def is_fronted_only(keyword: str) -> bool:
     return keyword in _FRONTED_ONLY
+
+
+def match_position(words: list[str], i: int) -> tuple[int, str] | None:
+    if i >= len(words) or words[i] != "in":
+        return None
+    next_word = words[i + 1] if i + 1 < len(words) else None
+    if next_word in _POSITIONS:
+        return 2, next_word
+    return None
 
 
 def match_quantity(words: list[str], i: int) -> int | None:

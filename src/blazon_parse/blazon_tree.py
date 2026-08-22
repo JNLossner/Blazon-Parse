@@ -19,6 +19,7 @@ class ChargeNode:
 class FieldNode:
     fieldless: bool = False
     division: str | None = None
+    line: str | None = None
     tinctures: list[str] = field(default_factory=list)
     modifiers: list[str] = field(default_factory=list)
 

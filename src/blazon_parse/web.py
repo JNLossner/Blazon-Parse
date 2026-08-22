@@ -79,17 +79,18 @@ def _build_catalog_rows(catalog: FeatureCatalog) -> list[CatalogRow]:
 
 def _catalog_word_lists(
     catalog: FeatureCatalog,
-) -> tuple[list[str], list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str], list[str]]:
     return (
         catalog.terms_of_type(FeatureType.tincture),
         catalog.terms_of_type(FeatureType.field_division),
         catalog.terms_of_type(FeatureType.field_treatment),
+        catalog.terms_of_type(FeatureType.line),
     )
 
 
 catalog, _ = ensure_catalog(CATALOG_PATH, PARSED_CATALOG_PATH, update=False)
 catalog_rows = _build_catalog_rows(catalog)
-tinctures, divisions, treatments = _catalog_word_lists(catalog)
+tinctures, divisions, treatments, lines = _catalog_word_lists(catalog)
 
 
 def _catalog_stats() -> dict:
@@ -188,7 +189,11 @@ def new_index(request: Request) -> HTMLResponse:
 @app.post("/parse-new", response_class=HTMLResponse)
 def parse_new(request: Request, blazon: Annotated[str, Form()]) -> HTMLResponse:
     tree = parse_blazon(
-        blazon, tinctures=tinctures, divisions=divisions, treatments=treatments
+        blazon,
+        tinctures=tinctures,
+        divisions=divisions,
+        treatments=treatments,
+        lines=lines,
     )
     resolved = resolve_blazon(tree, catalog)
     groups = grouped_blazon_lines(resolved)
@@ -290,10 +295,10 @@ def settings_page(request: Request) -> HTMLResponse:
 
 @app.post("/settings/update-catalog", response_class=HTMLResponse)
 def update_catalog_route(request: Request) -> HTMLResponse:
-    global catalog, catalog_rows, tinctures, divisions, treatments
+    global catalog, catalog_rows, tinctures, divisions, treatments, lines
     catalog, updated = ensure_catalog(CATALOG_PATH, PARSED_CATALOG_PATH, update=True)
     catalog_rows = _build_catalog_rows(catalog)
-    tinctures, divisions, treatments = _catalog_word_lists(catalog)
+    tinctures, divisions, treatments, lines = _catalog_word_lists(catalog)
     return templates.TemplateResponse(
         request,
         "_catalog_status.html",

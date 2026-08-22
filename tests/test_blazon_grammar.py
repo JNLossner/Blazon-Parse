@@ -33,6 +33,7 @@ DIVISIONS = [
     "quarterly",
 ]
 TREATMENTS = ["ermined", "masoned", "semy"]
+LINES = ["rayonny", "embattled", "engrailed", "indented"]
 
 
 def parse(
@@ -41,9 +42,14 @@ def parse(
     tinctures: list[str] = TINCTURES,
     divisions: list[str] = DIVISIONS,
     treatments: list[str] = TREATMENTS,
+    lines: list[str] = LINES,
 ) -> BlazonTree:
     return parse_blazon(
-        blazon, tinctures=tinctures, divisions=divisions, treatments=treatments
+        blazon,
+        tinctures=tinctures,
+        divisions=divisions,
+        treatments=treatments,
+        lines=lines,
     )
 
 

@@ -29,8 +29,13 @@ def resolve(catalog: FeatureCatalog, blazon: str):
     tinctures = _terms_of(catalog, FeatureType.tincture)
     divisions = _terms_of(catalog, FeatureType.field_division)
     treatments = _terms_of(catalog, FeatureType.field_treatment)
+    lines = _terms_of(catalog, FeatureType.line)
     tree = parse_blazon(
-        blazon, tinctures=tinctures, divisions=divisions, treatments=treatments
+        blazon,
+        tinctures=tinctures,
+        divisions=divisions,
+        treatments=treatments,
+        lines=lines,
     )
     return resolve_blazon(tree, catalog)
 

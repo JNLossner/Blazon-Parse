@@ -42,6 +42,7 @@ def main() -> None:
         tinctures=catalog.terms_of_type(FeatureType.tincture),
         divisions=catalog.terms_of_type(FeatureType.field_division),
         treatments=catalog.terms_of_type(FeatureType.field_treatment),
+        lines=catalog.terms_of_type(FeatureType.line),
     )
     resolved = resolve_blazon(tree, catalog)
     print(args.blazon, "\n")
